@@ -1,0 +1,60 @@
+name: oCIS integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: oCIS 8.1.0
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OCIS_INTEGRATION_VERSION: 8.1.0
+    steps:
+      - uses: actions/checkout@v6.0.3
+      - uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Secret Service test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnome-keyring
+          mkdir -p "$HOME/.cache" "$HOME/.local/share/keyrings"
+          chmod 700 "$HOME/.local" "$HOME/.local/share" \
+            "$HOME/.local/share/keyrings"
+
+      - name: Start pinned oCIS
+        run: make integration-up
+
+      - name: Run black-box CLI suite
+        shell: dbus-run-session -- bash --noprofile --norc -eo pipefail {0}
+        run: |
+          echo 'disposable-integration-keyring' | gnome-keyring-daemon --unlock
+          make integration-test
+
+      - name: Collect sanitized oCIS logs
+        if: failure()
+        run: |
+          make integration-logs > ocis-8.1.0-sanitized.log
+
+      - name: Upload sanitized failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ocis-8.1.0-sanitized-logs
+          path: ocis-8.1.0-sanitized.log
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Stop oCIS
+        if: always()
+        run: make integration-down

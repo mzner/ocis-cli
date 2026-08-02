@@ -1,0 +1,16 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - gosec
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  modules-download-mode: readonly

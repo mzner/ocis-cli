@@ -1,0 +1,32 @@
+name: ocis-cli-integration
+
+services:
+  ocis:
+    image: owncloud/ocis:${OCIS_INTEGRATION_VERSION:?set an exact oCIS version}
+    entrypoint:
+      - /bin/sh
+      - -ec
+    command:
+      - |
+        ocis init --insecure yes || test -f /etc/ocis/ocis.yaml
+        exec ocis server
+    environment:
+      OCIS_INSECURE: "true"
+      OCIS_LOG_LEVEL: ${OCIS_INTEGRATION_LOG_LEVEL:-error}
+      OCIS_URL: ${OCIS_INTEGRATION_SERVER:-https://localhost:9200}
+      PROXY_HTTP_ADDR: 0.0.0.0:${OCIS_INTEGRATION_PORT:-9200}
+      PROXY_ENABLE_BASIC_AUTH: "true"
+      IDM_CREATE_DEMO_USERS: "true"
+      IDM_ADMIN_PASSWORD: ${OCIS_INTEGRATION_ADMIN_PASSWORD:-admin}
+      IDP_ALLOW_DYNAMIC_CLIENT_REGISTRATION: "true"
+      IDP_DYNAMIC_CLIENT_SECRET_DURATION: "3600"
+      FRONTEND_SEARCH_MIN_LENGTH: "2"
+    ports:
+      - "${OCIS_INTEGRATION_PORT:-9200}:${OCIS_INTEGRATION_PORT:-9200}"
+    volumes:
+      - ocis-config:/etc/ocis
+      - ocis-data:/var/lib/ocis
+
+volumes:
+  ocis-config:
+  ocis-data:
