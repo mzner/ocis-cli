@@ -164,6 +164,8 @@ const (
 	ShareDirectUpdate ShareOperation = "direct-update"
 	ShareRemove       ShareOperation = "remove"
 	ShareReceived     ShareOperation = "received"
+	ShareAccept       ShareOperation = "accept"
+	ShareDecline      ShareOperation = "decline"
 	ShareRoles        ShareOperation = "roles"
 )
 
@@ -185,6 +187,7 @@ type ShareRequest struct {
 	RecipientType    string
 	RecipientIsID    bool
 	Role             string
+	State            string
 	LinksOnly        bool
 	Confirmed        bool
 	DryRun           bool

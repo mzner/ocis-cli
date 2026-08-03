@@ -355,7 +355,7 @@ func TestDirectShareCommandsAndAliasesAreDiscoverable(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"user", "group", "roles", "update", "remove, rm", "received",
-		"link, links", "list, ls",
+		"accept", "decline", "link, links", "list, ls",
 	} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf(

@@ -182,6 +182,8 @@ type share struct {
 	ID            string `json:"id"`
 	Path          string `json:"path"`
 	RecipientName string `json:"recipientName"`
+	State         int    `json:"state"`
+	StateName     string `json:"stateName"`
 	URL           string `json:"url"`
 }
 
@@ -1315,14 +1317,56 @@ func (current *fixture) testShares(t *testing.T) {
 		t.Fatalf("direct share = %#v", direct)
 	}
 	received := decodeData[[]share](
-		t, current.json(t, current.restricted, "share", "received"),
+		t, current.json(
+			t, current.restricted, "share", "received", "--state", "pending",
+		),
 	)
-	if !hasShare(received, direct.ID) {
+	if !hasShare(received, direct.ID) ||
+		!slices.ContainsFunc(received, func(value share) bool {
+			return value.ID == direct.ID && value.State == 1 &&
+				value.StateName == "pending"
+		}) {
 		t.Fatalf("received shares do not contain %s: %#v", direct.ID, received)
+	}
+	acceptPlan := decodeData[map[string]any](
+		t, current.json(
+			t, current.restricted, "share", "accept", direct.ID, "--dry-run",
+		),
+	)
+	if acceptPlan["state"] != "accepted" || acceptPlan["dryRun"] != true {
+		t.Fatalf("accept plan = %#v", acceptPlan)
+	}
+	current.success(
+		t, nil, "--profile", current.restricted,
+		"share", "accept", direct.ID,
+	)
+	accepted := decodeData[[]share](
+		t, current.json(
+			t, current.restricted, "share", "received", "--state", "accepted",
+		),
+	)
+	if !hasShare(accepted, direct.ID) {
+		t.Fatalf("accepted shares do not contain %s: %#v", direct.ID, accepted)
 	}
 	current.success(
 		t, nil, "--profile", current.admin,
 		"share", "update", direct.ID, "--role", "editor",
+	)
+	current.success(
+		t, nil, "--profile", current.restricted,
+		"share", "decline", direct.ID,
+	)
+	declined := decodeData[[]share](
+		t, current.json(
+			t, current.restricted, "share", "received", "--state", "declined",
+		),
+	)
+	if !hasShare(declined, direct.ID) {
+		t.Fatalf("declined shares do not contain %s: %#v", direct.ID, declined)
+	}
+	current.success(
+		t, nil, "--profile", current.restricted,
+		"share", "accept", direct.ID,
 	)
 
 	link := decodeData[share](

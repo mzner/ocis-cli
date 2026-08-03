@@ -950,6 +950,10 @@ ocis share user add /reports/report.pdf alice --role viewer
 ocis share group add /projects developers --role editor
 ocis share list /reports/report.pdf
 ocis share received
+ocis share received --state pending
+ocis share accept SHARE_ID --dry-run
+ocis share accept SHARE_ID
+ocis share decline SHARE_ID
 ```
 
 Recipient names are resolved through the server directory and ambiguous
@@ -981,7 +985,22 @@ ocis share remove SHARE_ID
 Removal prompts for confirmation and accepts `--yes` only for reviewed
 automation. `share list` includes user, group, and public-link shares created
 by the caller. `share received [REMOTE_PATH]` lists incoming user/group shares
-and is not filtered by `--space`.
+and is not filtered by `--space`. Filter it with `--state accepted`,
+`--state pending`, `--state declined`, or `--state all`. Human output names the
+state; JSON and JSONL include both the numeric OCS `state` and readable
+`stateName`.
+
+Use the opaque received-share ID to accept or decline an invitation. Both
+commands resolve the ID against shares received by the authenticated account
+before changing it and support `--dry-run`. A declined share can be accepted
+again when the server permits it:
+
+```sh
+ocis share accept SHARE_ID
+ocis share decline SHARE_ID --dry-run
+ocis share decline SHARE_ID
+ocis share accept SHARE_ID
+```
 
 Direct sharing honors the profile's default Space and the global `--space`
 override for resource-addressed commands:

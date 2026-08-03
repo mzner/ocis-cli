@@ -263,7 +263,7 @@ func newDirectShareServer(
 				writeAppOCS(writer, `[{
 					"id":"received-id","share_type":0,
 					"path":"/Shares/incoming.txt","uid_owner":"alice",
-					"displayname_owner":"Alice","permissions":1,
+					"displayname_owner":"Alice","permissions":1,"state":0,
 					"file_source":"storage$other!incoming"
 				}]`)
 				return

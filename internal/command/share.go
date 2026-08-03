@@ -22,6 +22,8 @@ func newShareCommand(options *globalOptions) *cobra.Command {
 		newShareUpdateCommand(options),
 		newShareRemoveCommand(options),
 		newShareReceivedCommand(options),
+		newShareResponseCommand(options, "accept"),
+		newShareResponseCommand(options, "decline"),
 		newShareLinkCommand(options),
 	)
 	return command
@@ -310,7 +312,8 @@ func newShareRemoveCommand(options *globalOptions) *cobra.Command {
 }
 
 func newShareReceivedCommand(options *globalOptions) *cobra.Command {
-	return &cobra.Command{
+	var state string
+	command := &cobra.Command{
 		Use: "received [REMOTE_PATH]", Short: "List shares received by you",
 		Args: maximumArgs(1),
 		RunE: func(command *cobra.Command, args []string) error {
@@ -319,10 +322,40 @@ func newShareReceivedCommand(options *globalOptions) *cobra.Command {
 				remote = args[0]
 			}
 			return runShare(command, options, app.ShareRequest{
-				Operation: app.ShareReceived, Path: remote,
+				Operation: app.ShareReceived, Path: remote, State: state,
 			})
 		},
 	}
+	command.Flags().StringVar(
+		&state, "state", "",
+		"filter by state: accepted, pending, declined, or all",
+	)
+	return command
+}
+
+func newShareResponseCommand(
+	options *globalOptions, action string,
+) *cobra.Command {
+	var dryRun bool
+	operation := app.ShareAccept
+	short := "Accept a received share"
+	if action == "decline" {
+		operation = app.ShareDecline
+		short = "Decline a received share"
+	}
+	command := &cobra.Command{
+		Use: action + " SHARE_ID", Short: short, Args: exactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			return runShare(command, options, app.ShareRequest{
+				Operation: operation, ID: args[0], DryRun: dryRun,
+			})
+		},
+	}
+	command.Flags().BoolVar(
+		&dryRun, "dry-run", false,
+		"resolve the received share without changing its state",
+	)
+	return command
 }
 
 func parsePublicLinkPermissions(value string) (int, error) {

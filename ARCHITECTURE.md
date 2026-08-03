@@ -86,7 +86,8 @@ without starting a subprocess.
   ranked WebDAV multistatus responses without depending on Cobra or Space
   selection policy.
 - `internal/sharing`: resolve outgoing and received OCS share records, create
-  and revoke public links, and decode Spaces and sharing capability flags.
+  and revoke public links, accept or decline received shares, and decode
+  Spaces and sharing capability flags.
   Public-link property mutations use LibreGraph after the OCS record resolves
   the stable resource and permission IDs.
 - `internal/sync`: compare source/destination or local/remote trees with the

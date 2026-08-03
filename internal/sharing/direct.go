@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 
 	"github.com/mzner/ocis-cli/internal/httpapi"
 )
@@ -22,7 +23,8 @@ type Share struct {
 	OwnerName     string `json:"ownerName,omitempty"`
 	Permissions   int    `json:"permissions"`
 	Expiration    string `json:"expiration,omitempty"`
-	State         int    `json:"state,omitempty"`
+	State         *int   `json:"state,omitempty"`
+	StateName     string `json:"stateName,omitempty"`
 	URL           string `json:"url,omitempty"`
 	Name          string `json:"name,omitempty"`
 	SpaceID       string `json:"spaceId,omitempty"`
@@ -31,9 +33,11 @@ type Share struct {
 
 // ShareListRequest filters outgoing or received shares.
 type ShareListRequest struct {
-	Path     string
-	SpaceID  string
-	Received bool
+	Path      string
+	SpaceID   string
+	Received  bool
+	State     *int
+	AllStates bool
 }
 
 // ListShares returns outgoing user, group, and public-link shares or received
@@ -45,6 +49,11 @@ func (client *Client) ListShares(
 	if request.Received {
 		query.Set("shared_with_me", "true")
 		query.Set("share_types", "0,1")
+		if request.AllStates {
+			query.Set("state", "all")
+		} else if request.State != nil {
+			query.Set("state", strconv.Itoa(*request.State))
+		}
 	} else {
 		query.Set("reshares", "true")
 	}
@@ -97,7 +106,7 @@ type rawShare struct {
 	DisplayNameOwner        stringValue `json:"displayname_owner"`
 	Permissions             intValue    `json:"permissions"`
 	Expiration              stringValue `json:"expiration"`
-	State                   intValue    `json:"state"`
+	State                   *intValue   `json:"state"`
 	URL                     stringValue `json:"url"`
 	Name                    stringValue `json:"name"`
 	SpaceID                 stringValue `json:"space_id"`
@@ -109,6 +118,13 @@ func (raw rawShare) share() Share {
 	if sharePath == "" {
 		sharePath = string(raw.FileTarget)
 	}
+	var state *int
+	stateName := ""
+	if raw.State != nil {
+		value := int(*raw.State)
+		state = &value
+		stateName = ShareStateName(value)
+	}
 	return Share{
 		ID: string(raw.ID), Type: shareTypeName(string(raw.ShareType)),
 		Path: sharePath, ItemType: string(raw.ItemType),
@@ -117,9 +133,52 @@ func (raw rawShare) share() Share {
 		RecipientInfo: string(raw.ShareWithAdditionalInfo),
 		Owner:         string(raw.UIDOwner), OwnerName: string(raw.DisplayNameOwner),
 		Permissions: int(raw.Permissions), Expiration: string(raw.Expiration),
-		State: int(raw.State), URL: string(raw.URL), Name: string(raw.Name),
+		State: state, StateName: stateName,
+		URL: string(raw.URL), Name: string(raw.Name),
 		SpaceID: string(raw.SpaceID), ResourceID: string(raw.FileSource),
 	}
+}
+
+// ShareStateName returns the OCS name for a received-share state.
+func ShareStateName(state int) string {
+	switch state {
+	case 0:
+		return "accepted"
+	case 1:
+		return "pending"
+	case 2:
+		return "declined"
+	default:
+		return "unknown"
+	}
+}
+
+// AcceptShare accepts a received share by its opaque OCS share ID.
+func (client *Client) AcceptShare(ctx context.Context, id string) error {
+	return client.respondToReceivedShare(ctx, http.MethodPost, id)
+}
+
+// DeclineShare declines a received share by its opaque OCS share ID.
+func (client *Client) DeclineShare(ctx context.Context, id string) error {
+	return client.respondToReceivedShare(ctx, http.MethodDelete, id)
+}
+
+func (client *Client) respondToReceivedShare(
+	ctx context.Context, method, id string,
+) error {
+	response, err := client.api.Do(
+		ctx, method,
+		sharesEndpoint()+"/pending/"+url.PathEscape(id)+"?format=json", nil,
+		ocsHeaders(""),
+	)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return httpapi.ResponseError(response)
+	}
+	return decodeOCS(response.Body, nil)
 }
 
 func shareTypeName(value string) string {

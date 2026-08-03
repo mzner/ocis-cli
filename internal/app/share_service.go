@@ -28,6 +28,11 @@ func runShare(
 			return err
 		}
 	}
+	if request.Operation == ShareReceived {
+		if _, _, err := receivedShareStateFilter(request.State); err != nil {
+			return err
+		}
+	}
 	if request.Operation == ShareRemove && !request.Confirmed {
 		return usageShare(
 			"removing a share requires explicit confirmation",
@@ -71,7 +76,8 @@ func runShare(
 				"--space cannot filter received shares; use the optional received path",
 			)
 		}
-	case ShareLinkInfo, ShareLinkUpdate, ShareDirectUpdate, ShareRemove:
+	case ShareLinkInfo, ShareLinkUpdate, ShareDirectUpdate, ShareRemove,
+		ShareAccept, ShareDecline:
 		if options.Space != "" {
 			return usageShare(
 				"--space cannot filter an operation addressed by share ID",
@@ -98,6 +104,8 @@ func runShare(
 		return removeShare(ctx, client, request, options)
 	case ShareReceived:
 		return listReceivedShares(ctx, client, request, options)
+	case ShareAccept, ShareDecline:
+		return respondToReceivedShare(ctx, client, request, options)
 	case ShareRoles:
 		return listShareRoles(ctx, client, request.Path, options)
 	case ShareRevoke:
@@ -320,8 +328,15 @@ func listOutgoingShares(
 func listReceivedShares(
 	ctx context.Context, client *client, request ShareRequest, options RunOptions,
 ) error {
+	state, allStates, err := receivedShareStateFilter(request.State)
+	if err != nil {
+		return err
+	}
 	values, err := client.sharingClient().ListShares(
-		ctx, sharing.ShareListRequest{Path: request.Path, Received: true},
+		ctx, sharing.ShareListRequest{
+			Path: request.Path, Received: true,
+			State: state, AllStates: allStates,
+		},
 	)
 	if err != nil {
 		return err
@@ -347,15 +362,102 @@ func writeShares(
 		if target == "" {
 			target = party
 		}
+		state := "-"
+		if received {
+			state = value.StateName
+			if state == "" {
+				state = "unknown"
+			}
+		}
 		if _, err := fmt.Fprintf(
-			options.Out, "%-12s %-12s %-8s %-24s %s\n",
-			value.ID, value.Type, permissionName(value.Permissions),
+			options.Out, "%-12s %-12s %-10s %-8s %-24s %s\n",
+			value.ID, value.Type, state,
+			permissionName(value.Permissions),
 			value.Path, target,
 		); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func receivedShareStateFilter(value string) (*int, bool, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return nil, false, nil
+	case "all":
+		return nil, true, nil
+	case "accepted":
+		state := 0
+		return &state, false, nil
+	case "pending":
+		state := 1
+		return &state, false, nil
+	case "declined", "rejected":
+		state := 2
+		return &state, false, nil
+	default:
+		return nil, false, apperror.Wrap(
+			apperror.KindUsage, "share received",
+			fmt.Errorf(
+				"invalid state %q; expected accepted, pending, declined, or all",
+				value,
+			),
+		)
+	}
+}
+
+func respondToReceivedShare(
+	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+) error {
+	values, err := client.sharingClient().ListShares(
+		ctx, sharing.ShareListRequest{Received: true, AllStates: true},
+	)
+	if err != nil {
+		return err
+	}
+	var selected *sharing.Share
+	for index := range values {
+		if values[index].ID == request.ID {
+			selected = &values[index]
+			break
+		}
+	}
+	if selected == nil {
+		return apperror.Wrap(
+			apperror.KindNotFound, string(request.Operation),
+			fmt.Errorf("received share %q was not found", request.ID),
+		)
+	}
+	action, nextState := "accept", "accepted"
+	if request.Operation == ShareDecline {
+		action, nextState = "decline", "declined"
+	}
+	value := map[string]any{
+		"operation": action, "id": selected.ID, "path": selected.Path,
+		"previousState": selected.StateName, "state": nextState,
+		"dryRun": request.DryRun,
+	}
+	if request.DryRun {
+		return output(
+			options, "share-response", value,
+			"Would %s received share %s (%s)\n",
+			action, selected.ID, selected.Path,
+		)
+	}
+	if request.Operation == ShareAccept {
+		err = client.sharingClient().AcceptShare(ctx, request.ID)
+	} else {
+		err = client.sharingClient().DeclineShare(ctx, request.ID)
+	}
+	if err != nil {
+		return err
+	}
+	return output(
+		options, "share-response", value,
+		"%s received share %s (%s)\n",
+		strings.ToUpper(action[:1])+action[1:], selected.ID, selected.Path,
+	)
 }
 
 func listShareRoles(
