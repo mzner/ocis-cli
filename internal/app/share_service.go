@@ -33,6 +33,11 @@ func runShare(
 			return err
 		}
 	}
+	if request.Operation == ShareOverview {
+		if err := validateShareOverviewFilters(request); err != nil {
+			return err
+		}
+	}
 	if request.Operation == ShareRemove && !request.Confirmed {
 		return usageShare(
 			"removing a share requires explicit confirmation",
@@ -76,6 +81,9 @@ func runShare(
 				"--space cannot filter received shares; use the optional received path",
 			)
 		}
+	case ShareOverview:
+		// An overview is cross-Space by default. Its optional --space value is
+		// a filter and must not activate or mutate the saved Space selection.
 	case ShareLinkInfo, ShareLinkUpdate, ShareDirectUpdate, ShareRemove,
 		ShareAccept, ShareDecline:
 		if options.Space != "" {
@@ -104,6 +112,8 @@ func runShare(
 		return removeShare(ctx, client, request, options)
 	case ShareReceived:
 		return listReceivedShares(ctx, client, request, options)
+	case ShareOverview:
+		return listShareOverview(ctx, client, request, options)
 	case ShareAccept, ShareDecline:
 		return respondToReceivedShare(ctx, client, request, options)
 	case ShareRoles:

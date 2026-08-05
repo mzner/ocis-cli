@@ -18,7 +18,8 @@ The suite verifies:
   bidirectional planning/execution, rename optimization, conflict detection and
   keep-both preservation, recovery reporting, named one-way/bidirectional
   sync-job binding/execution/removal, local sync-state inspection/export/removal,
-  versions, trash, shares, and search;
+  versions, trash, outgoing/received share lifecycle and unified share
+  overview, and search;
 - Space discovery, selection, lifecycle, membership, and restricted-user
   authorization failures;
 - JSON and JSONL envelopes and stable exit codes; and

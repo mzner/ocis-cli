@@ -21,10 +21,33 @@ func newShareCommand(options *globalOptions) *cobra.Command {
 		newShareRolesCommand(options),
 		newShareUpdateCommand(options),
 		newShareRemoveCommand(options),
+		newShareOverviewCommand(options),
 		newShareReceivedCommand(options),
 		newShareResponseCommand(options, "accept"),
 		newShareResponseCommand(options, "decline"),
 		newShareLinkCommand(options),
+	)
+	return command
+}
+
+func newShareOverviewCommand(options *globalOptions) *cobra.Command {
+	var direction, state string
+	command := &cobra.Command{
+		Use: "overview", Short: "List outgoing and received shares across Spaces",
+		Args: noArgs,
+		RunE: func(command *cobra.Command, _ []string) error {
+			return runShare(command, options, app.ShareRequest{
+				Operation: app.ShareOverview, Direction: direction, State: state,
+			})
+		},
+	}
+	command.Flags().StringVar(
+		&direction, "direction", "all",
+		"filter by direction: outgoing, received, or all",
+	)
+	command.Flags().StringVar(
+		&state, "state", "current",
+		"filter by state: current, accepted, pending, declined, or all",
 	)
 	return command
 }

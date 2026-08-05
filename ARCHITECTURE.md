@@ -55,6 +55,7 @@ without starting a subprocess.
   `batch_service.go`, `filesystem_service.go`, `filesystem_tree_service.go`,
   `filesystem_du_service.go`, `filesystem_touch_service.go`,
   `filesystem_walk.go`, `metadata_service.go`,
+  `share_overview_service.go`,
   `space_member_service.go`, `space_update_service.go`,
   `space_lifecycle_service.go`, and
   the split `admin_*_service.go` files keep each use case independent;
@@ -147,6 +148,10 @@ Fast package tests remain Docker-independent.
 - Share removal requires explicit intent in both the Cobra and application
   layers. Share IDs are resolved against the caller's outgoing shares before
   mutation, and direct-share roles come from the target resource.
+- The share overview joins account-wide OCS share records with the caller's
+  LibreGraph drive inventory. It ignores the saved default Space unless an
+  explicit `--space` filter is provided and excludes declined invitations by
+  default.
 - Space names and aliases are convenience selectors. Destructive operations
   on disabled Spaces use stable IDs.
 - Server-advertised permissions and roles are authoritative; the CLI does not

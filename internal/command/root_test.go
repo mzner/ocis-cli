@@ -355,7 +355,7 @@ func TestDirectShareCommandsAndAliasesAreDiscoverable(t *testing.T) {
 	}
 	for _, expected := range []string{
 		"user", "group", "roles", "update", "remove, rm", "received",
-		"accept", "decline", "link, links", "list, ls",
+		"accept", "decline", "overview", "link, links", "list, ls",
 	} {
 		if !strings.Contains(output.String(), expected) {
 			t.Fatalf(
@@ -379,6 +379,19 @@ func TestDirectShareCommandsAndAliasesAreDiscoverable(t *testing.T) {
 				"%v: command=%v name=%q err=%v",
 				test.args, command, test.name, err,
 			)
+		}
+	}
+}
+
+func TestShareOverviewFlagsAreDiscoverable(t *testing.T) {
+	root := NewRootCommand()
+	command, _, err := root.Find([]string{"share", "overview"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"direction", "state"} {
+		if command.Flags().Lookup(name) == nil {
+			t.Fatalf("share overview is missing --%s", name)
 		}
 	}
 }

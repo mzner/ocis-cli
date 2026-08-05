@@ -187,6 +187,14 @@ type share struct {
 	URL           string `json:"url"`
 }
 
+type shareOverviewItem struct {
+	ShareID   string `json:"shareId"`
+	Direction string `json:"direction"`
+	State     string `json:"state"`
+	SpaceName string `json:"spaceName"`
+	Type      string `json:"type"`
+}
+
 type trashItem struct {
 	ID           string `json:"id"`
 	OriginalPath string `json:"originalPath"`
@@ -1328,6 +1336,26 @@ func (current *fixture) testShares(t *testing.T) {
 		}) {
 		t.Fatalf("received shares do not contain %s: %#v", direct.ID, received)
 	}
+	outgoingOverview := decodeData[[]shareOverviewItem](
+		t, current.json(
+			t, current.admin, "share", "overview", "--direction", "outgoing",
+		),
+	)
+	if !slices.ContainsFunc(outgoingOverview, func(value shareOverviewItem) bool {
+		return value.ShareID == direct.ID && value.Direction == "outgoing" &&
+			value.State == "active" && value.SpaceName != ""
+	}) {
+		t.Fatalf("outgoing overview does not contain %s: %#v", direct.ID, outgoingOverview)
+	}
+	pendingOverview := decodeData[[]shareOverviewItem](
+		t, current.json(t, current.restricted, "share", "overview"),
+	)
+	if !slices.ContainsFunc(pendingOverview, func(value shareOverviewItem) bool {
+		return value.ShareID == direct.ID && value.Direction == "received" &&
+			value.State == "pending" && value.SpaceName != ""
+	}) {
+		t.Fatalf("pending overview does not contain %s: %#v", direct.ID, pendingOverview)
+	}
 	acceptPlan := decodeData[map[string]any](
 		t, current.json(
 			t, current.restricted, "share", "accept", direct.ID, "--dry-run",
@@ -1363,6 +1391,24 @@ func (current *fixture) testShares(t *testing.T) {
 	)
 	if !hasShare(declined, direct.ID) {
 		t.Fatalf("declined shares do not contain %s: %#v", direct.ID, declined)
+	}
+	currentOverview := decodeData[[]shareOverviewItem](
+		t, current.json(t, current.restricted, "share", "overview"),
+	)
+	if slices.ContainsFunc(currentOverview, func(value shareOverviewItem) bool {
+		return value.ShareID == direct.ID
+	}) {
+		t.Fatalf("current overview contains declined share %s: %#v", direct.ID, currentOverview)
+	}
+	allOverview := decodeData[[]shareOverviewItem](
+		t, current.json(
+			t, current.restricted, "share", "overview", "--state", "all",
+		),
+	)
+	if !slices.ContainsFunc(allOverview, func(value shareOverviewItem) bool {
+		return value.ShareID == direct.ID && value.State == "declined"
+	}) {
+		t.Fatalf("all-state overview does not contain %s: %#v", direct.ID, allOverview)
 	}
 	current.success(
 		t, nil, "--profile", current.restricted,

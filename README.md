@@ -949,6 +949,7 @@ ocis share roles /reports/report.pdf
 ocis share user add /reports/report.pdf alice --role viewer
 ocis share group add /projects developers --role editor
 ocis share list /reports/report.pdf
+ocis share overview
 ocis share received
 ocis share received --state pending
 ocis share accept SHARE_ID --dry-run
@@ -989,6 +990,27 @@ and is not filtered by `--space`. Filter it with `--state accepted`,
 `--state pending`, `--state declined`, or `--state all`. Human output names the
 state; JSON and JSONL include both the numeric OCS `state` and readable
 `stateName`.
+
+Use `share overview` for one account-wide inventory of outgoing and received
+shares without changing the profile's selected Space:
+
+```sh
+ocis share overview
+ocis share overview --direction outgoing
+ocis share overview --direction received --state pending
+ocis share overview --state all
+ocis --space Engineering share overview
+ocis share overview --json
+```
+
+The default overview contains every outgoing share and received shares in the
+`accepted` or `pending` state. Declined invitations are not current and appear
+only with `--state declined` or `--state all`. An explicit `--state accepted`,
+`pending`, or `declined` selects received shares only. `--space` filters the
+inventory by a visible Space; selecting the virtual `Shares` drive includes
+received shares. If an incoming personal share's source Space is not visible
+through the recipient's drive inventory, its human-readable Space is `Shares`
+and machine output retains the source `spaceId`.
 
 Use the opaque received-share ID to accept or decline an invitation. Both
 commands resolve the ID against shares received by the authenticated account
