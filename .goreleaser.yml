@@ -60,7 +60,7 @@ scoops:
 
 release:
   draft: false
-  name_template: "ocis-cli v{{ .Version }}"
+  name_template: "v{{ .Version }}"
   header: |
     ## What's changed
   github:
