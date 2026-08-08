@@ -1,5 +1,7 @@
 version: 2
 
+project_name: ocis-cli
+
 before:
   hooks:
     - go test ./...
@@ -10,27 +12,63 @@ builds:
     binary: ocis
     env:
       - CGO_ENABLED=0
+    flags:
+      - -trimpath
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
+    mod_timestamp: "{{ .CommitTimestamp }}"
     ldflags:
-      - -s -w -X github.com/mzner/ocis-cli/internal/app.Version={{.Version}}
+      - >-
+        -s -w -buildid=
+        -X github.com/mzner/ocis-cli/internal/app.Version={{.Version}}
 
 archives:
-  - formats: [tar.gz]
+  - id: ocis
+    ids: [ocis]
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+sboms:
+  - id: archives
+    artifacts: archive
+    disable: false
 
 checksum:
+  algorithm: sha256
   name_template: checksums.txt
 
+scoops:
+  - name: ocis-cli
+    homepage: https://github.com/mzner/ocis-cli
+    description: Script-friendly CLI for oCIS-compatible servers
+    license: Apache-2.0
+    skip_upload: auto
+    repository:
+      owner: mzner
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    commit_author:
+      name: github-actions[bot]
+      email: 41898282+github-actions[bot]@users.noreply.github.com
+
 release:
+  draft: false
+  name_template: "ocis-cli v{{ .Version }}"
+  header: |
+    ## What's changed
   github:
     owner: mzner
     name: ocis-cli
 
 changelog:
+  use: git
   sort: asc
   filters:
     exclude:

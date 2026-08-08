@@ -46,4 +46,39 @@ Keep changes focused, add tests for new behavior, update user documentation,
 and use conventional commit prefixes such as `feat:`, `fix:`, `docs:`,
 `refactor:`, and `test:`.
 
-Before publishing a tag, follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+## Maintainer releases
+
+Releases use semantic version tags such as `v1.0.0` and must point to a commit
+already contained in `main`. The tag workflow builds Linux, macOS, and Windows
+archives, executes the packaged binary on all three operating systems, creates
+SPDX JSON SBOMs and SHA-256 checksums, records GitHub provenance attestations,
+publishes the GitHub release, and updates Homebrew and Scoop metadata.
+GoReleaser generates the release notes directly from the conventional commits
+since the previous version and displays them in the GitHub release; the
+repository does not maintain a separate changelog file.
+
+Before creating a tag:
+
+1. Confirm the working tree is clean and the intended commit is on `main`.
+2. Run `make check` and `make integration`.
+3. Install GoReleaser and Syft, then run `make release-snapshot`.
+4. Push `main` and wait for both CI and oCIS integration workflows to pass.
+
+The first release is `v1.0.0`. Later releases must also use a stable semantic
+version with a major version of at least 1. Configure the repository secret
+`TAP_GITHUB_TOKEN` with a fine-grained token that has Contents read/write access
+only to `mzner/homebrew-tap`; GitHub's default workflow token cannot write to a
+different repository.
+
+Run the guarded release command:
+
+```sh
+make release VERSION=1.0.0
+```
+
+It repeats the release snapshot and vulnerability checks, runs the full pinned
+oCIS integration suite, verifies that the signed tag points to the pushed
+`main` commit, and pushes the tag. The tag workflow then publishes the release.
+Inspect the generated release notes, archives, checksums, SBOMs, attestations,
+Homebrew formula, and Scoop manifest after it succeeds. Do not move or reuse a
+published version tag.

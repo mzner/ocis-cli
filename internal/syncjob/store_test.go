@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"testing"
 
 	syncmodel "github.com/mzner/ocis-cli/internal/sync"
@@ -12,7 +13,7 @@ import (
 func TestRoundTripPermissionsAndCustomPath(t *testing.T) {
 	storePath := filepath.Join(t.TempDir(), "jobs.json")
 	t.Setenv(pathEnvironment, storePath)
-	job := validJob()
+	job := validJob(t)
 	store := Empty()
 	store.Jobs[job.Name] = job
 	if err := Save(store); err != nil {
@@ -29,7 +30,7 @@ func TestRoundTripPermissionsAndCustomPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatalf("mode=%o", info.Mode().Perm())
 	}
 }
@@ -43,23 +44,23 @@ func TestMissingAndValidation(t *testing.T) {
 	}
 	for _, job := range []Job{
 		{},
-		func() Job { value := validJob(); value.Name = "../bad"; return value }(),
-		func() Job { value := validJob(); value.Profile = ""; return value }(),
-		func() Job { value := validJob(); value.AccountID = ""; return value }(),
-		func() Job { value := validJob(); value.Direction = "sideways"; return value }(),
-		func() Job { value := validJob(); value.LocalRoot = "relative"; return value }(),
-		func() Job { value := validJob(); value.RemoteRoot = ""; return value }(),
-		func() Job { value := validJob(); value.RemoteRoot = "relative"; return value }(),
-		func() Job { value := validJob(); value.RemoteRoot = "/not/../clean"; return value }(),
-		func() Job { value := validJob(); value.Excludes = []string{"["}; return value }(),
-		func() Job { value := validJob(); value.MaxEntries = 0; return value }(),
+		func() Job { value := validJob(t); value.Name = "../bad"; return value }(),
+		func() Job { value := validJob(t); value.Profile = ""; return value }(),
+		func() Job { value := validJob(t); value.AccountID = ""; return value }(),
+		func() Job { value := validJob(t); value.Direction = "sideways"; return value }(),
+		func() Job { value := validJob(t); value.LocalRoot = "relative"; return value }(),
+		func() Job { value := validJob(t); value.RemoteRoot = ""; return value }(),
+		func() Job { value := validJob(t); value.RemoteRoot = "relative"; return value }(),
+		func() Job { value := validJob(t); value.RemoteRoot = "/not/../clean"; return value }(),
+		func() Job { value := validJob(t); value.Excludes = []string{"["}; return value }(),
+		func() Job { value := validJob(t); value.MaxEntries = 0; return value }(),
 	} {
 		if err := Validate(job); err == nil {
 			t.Fatalf("accepted job %#v", job)
 		}
 	}
 	store = Empty()
-	store.Jobs["wrong-map-key"] = validJob()
+	store.Jobs["wrong-map-key"] = validJob(t)
 	if err := Save(store); err == nil {
 		t.Fatal("mismatched map key accepted")
 	}
@@ -102,11 +103,12 @@ func TestRejectsMalformedAndFutureFiles(t *testing.T) {
 	}
 }
 
-func validJob() Job {
+func validJob(t *testing.T) Job {
+	t.Helper()
 	return Job{
 		Name: "website", Profile: "work", AccountID: "v1:account",
 		SpaceID: "space", Direction: syncmodel.Push,
-		LocalRoot: "/local", RemoteRoot: "/remote",
+		LocalRoot: filepath.Join(t.TempDir(), "local"), RemoteRoot: "/remote",
 		Includes: []string{"*.html"}, Excludes: []string{"*.tmp"},
 		Delete: true, MaxEntries: 100,
 	}

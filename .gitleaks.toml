@@ -1,0 +1,12 @@
+title = "ocis-cli Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Hexadecimal alphabet used to validate local hashed state keys"
+condition = "AND"
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = ['''strings\.Trim\(key, "0123456789abcdef"\)''']
+paths = ['''^internal/(syncstate|syncrecovery)/store\.go$''']

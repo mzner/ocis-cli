@@ -272,7 +272,7 @@ func TestSyncJobCommandsAndRemovalConfirmation(t *testing.T) {
 	store := syncjob.Empty()
 	store.Jobs["website"] = syncjob.Job{
 		Name: "website", Profile: "work", AccountID: "account",
-		Direction: syncmodel.Push, LocalRoot: "/local",
+		Direction: syncmodel.Push, LocalRoot: filepath.Join(t.TempDir(), "local"),
 		RemoteRoot: "/remote", MaxEntries: 100,
 	}
 	if err := syncjob.Save(store); err != nil {

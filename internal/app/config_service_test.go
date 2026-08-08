@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -45,10 +46,20 @@ func TestConfigPathsReportsEffectiveSources(t *testing.T) {
 	}
 	rendered := output.String()
 	for _, expected := range []string{
-		`"type": "config-paths"`,
 		configPath,
 		filepath.Join(filepath.Dir(configPath), "sync-jobs.json"),
 		statePath,
+	} {
+		encoded, err := json.Marshal(expected)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(rendered, string(encoded)) {
+			t.Fatalf("output does not contain %q:\n%s", expected, rendered)
+		}
+	}
+	for _, expected := range []string{
+		`"type": "config-paths"`,
 		`"source": "OCIS_CONFIG"`,
 		`"source": "OCIS_STATE_DIR"`,
 		`"credentialBackend"`,

@@ -26,7 +26,43 @@ Generate shell completion with:
 ocis completion zsh > "${fpath[1]}/_ocis"
 ```
 
-## Build
+## Install
+
+```sh
+go install github.com/mzner/ocis-cli/cmd/ocis@latest
+```
+
+With Homebrew on macOS or Linux:
+
+```sh
+brew install mzner/tap/ocis-cli
+```
+
+On Windows with Scoop, the same repository acts as the Scoop bucket:
+
+```powershell
+scoop bucket add mzner https://github.com/mzner/homebrew-tap
+scoop install mzner/ocis-cli
+```
+
+Prebuilt archives for Linux, macOS, and Windows are available from
+[GitHub Releases](https://github.com/mzner/ocis-cli/releases). Extract the
+archive for your operating system and architecture, then place `ocis` (or
+`ocis.exe`) in a directory on `PATH`.
+
+Every release includes SHA-256 checksums, one SPDX JSON SBOM per archive, and
+GitHub build-provenance attestations. For example:
+
+```sh
+gh release download v1.0.0 --repo mzner/ocis-cli
+archive=ocis-cli_1.0.0_darwin_arm64.tar.gz
+grep "  ${archive}$" checksums.txt | shasum -a 256 --check
+gh attestation verify "$archive" --repo mzner/ocis-cli
+```
+
+On Linux, replace `shasum -a 256 --check` with `sha256sum --check`.
+
+## Build from source
 
 Requires Go 1.26.5 or newer:
 
@@ -35,9 +71,6 @@ make test
 make build
 make install
 ```
-
-Release archives for Linux, macOS, and Windows are published from version tags
-with SHA-256 checksums.
 
 The slower black-box compatibility suite starts a disposable, pinned full oCIS
 server and tests the compiled CLI:
