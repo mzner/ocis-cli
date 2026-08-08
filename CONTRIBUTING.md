@@ -52,10 +52,10 @@ Releases use semantic version tags such as `v1.0.0` and must point to a commit
 already contained in `main`. The tag workflow builds Linux, macOS, and Windows
 archives, executes the packaged binary on all three operating systems, creates
 SPDX JSON SBOMs and SHA-256 checksums, records GitHub provenance attestations,
-publishes the GitHub release, and updates Homebrew and Scoop metadata.
-GoReleaser generates the release notes directly from the conventional commits
-since the previous version and displays them in the GitHub release; the
-repository does not maintain a separate changelog file.
+publishes those exact tested artifacts in the GitHub release, and updates
+Homebrew and Scoop metadata from the same release candidate. GitHub generates
+the release notes automatically; the repository does not maintain a separate
+changelog file.
 
 Before creating a tag:
 
