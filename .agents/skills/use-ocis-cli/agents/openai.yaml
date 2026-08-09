@@ -1,0 +1,4 @@
+interface:
+  display_name: "oCIS CLI"
+  short_description: "Operate oCIS safely from an AI agent"
+  default_prompt: "Use $use-ocis-cli to inspect my current oCIS profile and list its files safely."
