@@ -614,7 +614,9 @@ Expired sessions and changed local files start a new upload automatically.
 Zero-byte files and servers without compatible TUS support use WebDAV `PUT`.
 
 Downloads use an atomic `.part` file and resume it with an HTTP byte range when
-possible. Use
+possible. A resumed range is guarded by the entity validator recorded for that
+`.part` file, so a remote file that changed since the interruption restarts from
+the beginning instead of mixing old and new content. Use
 `--no-clobber` to protect an existing destination, `--interactive` to confirm
 an operation, or `--dry-run` to print the plan without changing files:
 
@@ -1181,8 +1183,8 @@ classification, message, and operation:
 
 The executable installs a signal-aware root context. Ctrl-C cancels OIDC login,
 HTTP requests, search, and transfer workers; loopback listeners and open bodies
-are closed. An interrupted resumable download retains its `.part` file for the
-next invocation.
+are closed. An interrupted resumable download retains its `.part` file, and the
+entity validator that produced it, for the next invocation.
 
 ## OIDC clients
 

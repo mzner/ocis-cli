@@ -266,9 +266,7 @@ func TestDownloadResumesPartFileAndVerifies(t *testing.T) {
 	}))
 	defer server.Close()
 	local := filepath.Join(t.TempDir(), "report.txt")
-	if err := os.WriteFile(local+".part", []byte("hello "), 0600); err != nil {
-		t.Fatal(err)
-	}
+	writePartial(t, local, "hello ", `"etag"`)
 	client := NewClient(Config{Server: server.URL, Username: "alice"}, server.Client())
 	if err := client.DownloadWithOptions(
 		context.Background(), "/report.txt", local,
@@ -285,6 +283,21 @@ func TestDownloadResumesPartFileAndVerifies(t *testing.T) {
 	}
 	if _, err := os.Stat(local + ".part"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("part file remains: %v", err)
+	}
+	if _, err := os.Stat(local + ".part.etag"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("validator sidecar remains: %v", err)
+	}
+}
+
+// writePartial creates a retained partial download and records the entity
+// validator that produced it.
+func writePartial(t *testing.T, local, content, validator string) {
+	t.Helper()
+	if err := os.WriteFile(local+".part", []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(local+".part.etag", []byte(validator), 0600); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -359,6 +372,89 @@ func TestDownloadIntoExistingDirectory(t *testing.T) {
 	}
 }
 
+func TestDownloadResumeRevalidatesRemoteIdentity(t *testing.T) {
+	const changed = "BBBBBBBBBB"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			writer.Header().Set("ETag", `"v2"`)
+			if request.Header.Get("If-Range") != "" {
+				// The remote entity no longer matches the saved validator, so
+				// the range is ignored and the whole current entity is sent.
+				_, _ = io.WriteString(writer, changed)
+				return
+			}
+			if strings.HasPrefix(request.Header.Get("Range"), "bytes=") {
+				writer.Header().Set("Content-Range", "bytes 5-9/10")
+				writer.WriteHeader(http.StatusPartialContent)
+				_, _ = io.WriteString(writer, changed[5:])
+				return
+			}
+			_, _ = io.WriteString(writer, changed)
+		case "PROPFIND":
+			writeDAVFileETag(writer, request.URL.Path, int64(len(changed)), `"v2"`)
+		default:
+			t.Fatalf("unexpected method: %s", request.Method)
+		}
+	}))
+	defer server.Close()
+	local := filepath.Join(t.TempDir(), "report.txt")
+	// A stale .part retained from an interrupted download of older content.
+	writePartial(t, local, "AAAAA", `"v1"`)
+	client := NewClient(Config{Server: server.URL, Username: "alice"}, server.Client())
+	if err := client.DownloadWithOptions(
+		context.Background(), "/report.txt", local,
+		TransferOptions{Resume: true, Verify: true},
+	); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); got != changed {
+		t.Fatalf("resume spliced stale content: got %q, want %q", got, changed)
+	}
+}
+
+func TestDownloadResumeSendsIfRangeValidator(t *testing.T) {
+	var sawIfRange string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.Method {
+		case http.MethodGet:
+			sawIfRange = request.Header.Get("If-Range")
+			writer.Header().Set("ETag", `"v1"`)
+			writer.Header().Set("Content-Range", "bytes 6-10/11")
+			writer.WriteHeader(http.StatusPartialContent)
+			_, _ = io.WriteString(writer, "world")
+		case "PROPFIND":
+			writeDAVFile(writer, request.URL.Path, 11)
+		default:
+			t.Fatalf("unexpected method: %s", request.Method)
+		}
+	}))
+	defer server.Close()
+	local := filepath.Join(t.TempDir(), "report.txt")
+	writePartial(t, local, "hello ", `"v1"`)
+	client := NewClient(Config{Server: server.URL, Username: "alice"}, server.Client())
+	if err := client.DownloadWithOptions(
+		context.Background(), "/report.txt", local,
+		TransferOptions{Resume: true, ExpectedETag: `"v1"`},
+	); err != nil {
+		t.Fatal(err)
+	}
+	if sawIfRange != `"v1"` {
+		t.Fatalf("If-Range: got %q, want %q", sawIfRange, `"v1"`)
+	}
+	data, err := os.ReadFile(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); got != "hello world" {
+		t.Fatalf("download: got %q", got)
+	}
+}
+
 func TestDownloadRejectsInvalidResumeRange(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Range") != "bytes=4-" {
@@ -370,9 +466,7 @@ func TestDownloadRejectsInvalidResumeRange(t *testing.T) {
 	}))
 	defer server.Close()
 	local := filepath.Join(t.TempDir(), "report.txt")
-	if err := os.WriteFile(local+".part", []byte("hell"), 0600); err != nil {
-		t.Fatal(err)
-	}
+	writePartial(t, local, "hell", `"etag"`)
 	client := NewClient(Config{Server: server.URL, Username: "alice"}, server.Client())
 	err := client.DownloadWithOptions(
 		context.Background(), "/report.txt", local, TransferOptions{Resume: true},
@@ -711,13 +805,19 @@ func TestEscapeRemoteNormalizesAndEscapesSegments(t *testing.T) {
 }
 
 func writeDAVFile(writer http.ResponseWriter, href string, size int64) {
+	writeDAVFileETag(writer, href, size, `"etag"`)
+}
+
+func writeDAVFileETag(
+	writer http.ResponseWriter, href string, size int64, etag string,
+) {
 	writer.WriteHeader(http.StatusMultiStatus)
 	_, _ = io.WriteString(writer,
 		`<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>`+
 			href+`</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop>`+
 			`<d:displayname>report.txt</d:displayname><d:getcontentlength>`+
 			strconv.FormatInt(size, 10)+
-			`</d:getcontentlength><d:getetag>"etag"</d:getetag><d:resourcetype/>`+
+			`</d:getcontentlength><d:getetag>`+etag+`</d:getetag><d:resourcetype/>`+
 			`</d:prop></d:propstat></d:response></d:multistatus>`)
 }
 
