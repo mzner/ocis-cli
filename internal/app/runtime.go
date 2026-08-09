@@ -92,9 +92,10 @@ func newClientWithOptions(
 	// Validated here, not only where a profile is created: a release before the
 	// https requirement stored cleartext profiles without an opt-in, and such a
 	// profile would otherwise still receive its saved password or token and send
-	// it over the network. Checked before any credential is applied or refreshed,
-	// and never during config.Load, so server list, status, logout, and
-	// server remove stay usable for repairing the profile.
+	// it over the network. Checked before an environment credential is applied, a
+	// token is refreshed, a protocol client is constructed, or an authenticated
+	// request is sent. It is never checked during config.Load, so server list,
+	// status, logout, and server remove stay usable for repairing the profile.
 	if err := validateProfileServerURL(name, selectedProfile); err != nil {
 		return nil, err
 	}

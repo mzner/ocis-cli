@@ -167,10 +167,13 @@ Fast package tests remain Docker-independent.
   bearer tokens are equally exposed on the wire.
 - The transport requirement is enforced where a credential could leave the
   process, not only where a URL is entered. A persisted profile is revalidated
-  when selected, before a keyring secret, `OCIS_ACCESS_TOKEN`, or a token
-  refresh is applied, and the shared HTTP client refuses to follow a redirect
-  that downgrades to cleartext. Validation never happens during `config.Load`,
-  so a rejected profile can still be inspected and repaired.
+  when selected, before `OCIS_ACCESS_TOKEN` is applied, a token is refreshed, or
+  an authenticated request is sent. Keyring material may already be loaded into
+  process memory during profile loading, but validation prevents it from being
+  transmitted to a rejected server. The shared HTTP client also refuses to
+  follow a redirect that downgrades to cleartext. Validation never happens
+  during `config.Load`, so a rejected profile can still be inspected and
+  repaired.
 - Password input crosses the Cobra/application boundary in memory only. It is
   read from a hidden prompt or environment variable, never a value flag, and
   never enters output data.

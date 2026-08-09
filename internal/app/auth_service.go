@@ -76,8 +76,8 @@ func runAuth(ctx context.Context, request AuthRequest, selected string, options 
 		}
 		// A login without a new --server reuses the stored URL, which a release
 		// before the https requirement may have saved as cleartext. Checked after
-		// request.Insecure is applied, so the flag still opts in, and before a
-		// password is read, a browser is opened, discovery runs, or a probe is
+		// request.Insecure is applied, so the flag still opts in, and before a new
+		// password is obtained, a browser is opened, discovery runs, or a probe is
 		// sent.
 		if err := validateProfileServerURL(name, p); err != nil {
 			return err
