@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/mzner/ocis-cli/internal/logging"
+	"github.com/mzner/ocis-cli/internal/retry"
 	"github.com/mzner/ocis-cli/internal/transfer"
 )
 
@@ -404,8 +405,8 @@ func (client *Client) DownloadWithOptions(ctx context.Context, remote, local str
 			}
 			return err
 		}
-		if retryableStatus(response.StatusCode) && attempt < client.config.Retries {
-			delay := retryAfter(response)
+		if retry.RetryableStatus(response.StatusCode) && attempt < client.config.Retries {
+			delay := retry.After(response)
 			_ = response.Body.Close()
 			if err := client.waitRetry(ctx, attempt, delay); err != nil {
 				return err
@@ -701,7 +702,7 @@ func (client *Client) doWithRetry(ctx context.Context, build func() (*http.Reque
 			return nil, err
 		}
 		response, err := client.http.Do(request)
-		if err == nil && (!retryableStatus(response.StatusCode) || attempt >= client.config.Retries) {
+		if err == nil && (!retry.RetryableStatus(response.StatusCode) || attempt >= client.config.Retries) {
 			return response, nil
 		}
 		if err != nil && attempt >= client.config.Retries {
@@ -710,7 +711,7 @@ func (client *Client) doWithRetry(ctx context.Context, build func() (*http.Reque
 		delay := time.Duration(0)
 		status := "transport_error"
 		if response != nil {
-			delay = retryAfter(response)
+			delay = retry.After(response)
 			status = response.Status
 			_ = response.Body.Close()
 		}
@@ -724,33 +725,10 @@ func (client *Client) doWithRetry(ctx context.Context, build func() (*http.Reque
 	}
 }
 
+// waitRetry pauses before the next attempt using the configured base wait and
+// the shared bounded-delay policy.
 func (client *Client) waitRetry(ctx context.Context, attempt int, delay time.Duration) error {
-	if delay <= 0 {
-		delay = client.config.RetryWait * time.Duration(1<<min(attempt, 4))
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
-func retryableStatus(status int) bool {
-	return status == http.StatusTooManyRequests || status >= 500
-}
-
-func retryAfter(response *http.Response) time.Duration {
-	value := response.Header.Get("Retry-After")
-	if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
-		return seconds
-	}
-	if when, err := http.ParseTime(value); err == nil {
-		return max(time.Until(when), 0)
-	}
-	return 0
+	return retry.Wait(ctx, client.config.RetryWait, attempt, delay)
 }
 
 func parseContentRange(value string) (start, size int64, ok bool) {

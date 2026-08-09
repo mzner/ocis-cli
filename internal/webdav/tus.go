@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/bdragon300/tusgo"
+
+	"github.com/mzner/ocis-cli/internal/retry"
 )
 
 const maxTUSResponseBody = 4096
@@ -149,7 +151,7 @@ func (client *Client) uploadTUS(
 		}
 		delay := time.Duration(0)
 		if stream.LastResponse != nil {
-			delay = retryAfter(stream.LastResponse)
+			delay = retry.After(stream.LastResponse)
 		}
 		if err := client.waitRetry(ctx, attempt, delay); err != nil {
 			return err
@@ -401,7 +403,7 @@ func retryableTUSError(err error, response *http.Response) bool {
 	if errors.As(err, &networkErr) {
 		return true
 	}
-	return response != nil && retryableStatus(response.StatusCode)
+	return response != nil && retry.RetryableStatus(response.StatusCode)
 }
 
 func (client *Client) wrapTUSError(
