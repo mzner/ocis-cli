@@ -116,7 +116,8 @@ without starting a subprocess.
   or a complete Space trash bin.
 - `internal/transfer`: coordinate bounded parallel local and remote traversal
   and aggregate byte progress; atomically replace local files after successful
-  downloads.
+  downloads. A partial download is only resumed against the entity validator
+  recorded when its bytes were written; an unverifiable prefix is discarded.
 - `internal/versions`: list, stream, and restore historical file versions
   through the resource-ID-based WebDAV metadata endpoint.
 - `internal/webdav`: implement DAV requests, retries, capability-negotiated TUS

@@ -359,6 +359,17 @@ func (client *Client) DownloadToWriter(
 
 // DownloadWithOptions downloads one remote file atomically. A retained .part
 // file is resumed with a byte range on the next attempt when enabled.
+//
+// Resuming is only safe while the remote entity that produced the .part file is
+// unchanged, because the retained prefix is never re-read. Every ranged request
+// therefore carries an If-Range validator, and a 200 response to that request
+// means the validator did not match: the .part prefix is discarded and the
+// current entity is written from offset zero.
+//
+// The recorded validator must never describe bytes it did not produce, so it is
+// invalidated before a restart truncates the prefix and recorded again only
+// once the file is empty; an interruption anywhere in between leaves an
+// unlabelled prefix, which the next attempt discards rather than trusts.
 func (client *Client) DownloadWithOptions(ctx context.Context, remote, local string, options TransferOptions) error {
 	if info, err := os.Stat(local); err == nil && info.IsDir() {
 		local = filepath.Join(local, path.Base(cleanRemote(remote)))
@@ -372,7 +383,7 @@ func (client *Client) DownloadWithOptions(ctx context.Context, remote, local str
 	}
 	temporary := local + ".part"
 	if !options.Resume {
-		if err := os.Remove(temporary); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := discardPartial(temporary); err != nil {
 			return err
 		}
 	}
@@ -380,9 +391,23 @@ func (client *Client) DownloadWithOptions(ctx context.Context, remote, local str
 	var downloadedETag string
 	for attempt := 0; attempt <= client.config.Retries; attempt++ {
 		offset := int64(0)
+		validator := ""
 		if options.Resume {
 			if info, err := os.Stat(temporary); err == nil {
-				offset = info.Size()
+				// A retained prefix may only be reused when its originating
+				// entity validator is known; otherwise it is not provably the
+				// same remote content and must be discarded.
+				saved, err := readPartValidator(temporary)
+				if err != nil {
+					return err
+				}
+				if saved == "" {
+					if err := discardPartial(temporary); err != nil {
+						return err
+					}
+				} else {
+					offset, validator = info.Size(), saved
+				}
 			}
 		}
 		request, err := client.newRequest(ctx, http.MethodGet, remote, nil)
@@ -391,6 +416,7 @@ func (client *Client) DownloadWithOptions(ctx context.Context, remote, local str
 		}
 		if offset > 0 {
 			request.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+			request.Header.Set("If-Range", validator)
 		}
 		if options.ExpectedETag != "" {
 			request.Header.Set("If-Match", options.ExpectedETag)
@@ -417,7 +443,9 @@ func (client *Client) DownloadWithOptions(ctx context.Context, remote, local str
 			defer func() { _ = response.Body.Close() }()
 			return responseError(response)
 		}
+		responseETag := response.Header.Get("ETag")
 		flags := os.O_CREATE | os.O_WRONLY
+		restart := true
 		if response.StatusCode == http.StatusPartialContent && offset > 0 {
 			rangeStart, rangeSize, ok := parseContentRange(response.Header.Get("Content-Range"))
 			if !ok || rangeStart != offset {
@@ -427,18 +455,51 @@ func (client *Client) DownloadWithOptions(ctx context.Context, remote, local str
 					response.Header.Get("Content-Range"), offset,
 				)
 			}
+			// The continuation was granted for the saved validator, so an ETag
+			// naming a different entity would splice two entities together. The
+			// saved validator is kept: it still describes the retained prefix.
+			if responseETag != "" && responseETag != validator {
+				_ = response.Body.Close()
+				return fmt.Errorf(
+					"resume download: server returned validator %s for a range "+
+						"requested with validator %s",
+					responseETag, validator,
+				)
+			}
+			restart = false
 			flags |= os.O_APPEND
 			expectedSize = rangeSize
+			downloadedETag = validator
 		} else {
 			flags |= os.O_TRUNC
 			offset = 0
 			expectedSize = response.ContentLength
+			downloadedETag = responseETag
 		}
-		downloadedETag = response.Header.Get("ETag")
+		// A restart replaces the retained prefix, so the validator describing it
+		// is invalidated before the stale bytes are removed and only recorded
+		// again once the file is empty. Publishing it earlier would let an
+		// interruption in between leave stale bytes labelled with the new
+		// entity, which is exactly the pairing a later resume must never trust.
+		if restart {
+			if err := discardPartValidator(temporary); err != nil {
+				_ = response.Body.Close()
+				return err
+			}
+		}
 		file, openErr := os.OpenFile(temporary, flags, 0600) //nolint:gosec // temporary is derived from the user-selected download destination
 		if openErr != nil {
 			_ = response.Body.Close()
 			return openErr
+		}
+		if restart {
+			// Recorded after truncation, so the validator can only ever describe
+			// bytes that came from this response.
+			if err := writePartValidator(temporary, downloadedETag); err != nil {
+				_ = file.Close()
+				_ = response.Body.Close()
+				return err
+			}
 		}
 		if options.Progress != nil {
 			options.Progress(offset)
@@ -482,7 +543,62 @@ func (client *Client) DownloadWithOptions(ctx context.Context, remote, local str
 			return fmt.Errorf("verify download: remote ETag changed during transfer")
 		}
 	}
+	// The sidecar is dropped before the destination is committed, so the only
+	// fallible step left is the commit itself. Once the destination has changed
+	// the transfer has succeeded, and reporting a later tidy-up failure as a
+	// transfer failure would make a sync caller skip its baseline update for a
+	// file that is already in place.
+	if err := discardPartValidator(temporary); err != nil {
+		client.config.Logger.Debug(
+			"download sidecar cleanup failed", "path", partValidatorPath(temporary),
+			"reason", err,
+		)
+	}
 	return transfer.ReplaceFile(temporary, local)
+}
+
+// partValidatorPath returns the sidecar holding the entity validator for a
+// retained partial download.
+func partValidatorPath(temporary string) string {
+	return temporary + ".etag"
+}
+
+// readPartValidator returns the validator recorded for a retained partial
+// download, or an empty value when none is known.
+func readPartValidator(temporary string) (string, error) {
+	data, err := os.ReadFile(partValidatorPath(temporary)) //nolint:gosec // derived from the user-selected download destination
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// writePartValidator records the validator of the entity currently being
+// written, removing any stale value when the server supplies none.
+func writePartValidator(temporary, validator string) error {
+	if strings.TrimSpace(validator) == "" {
+		return discardPartValidator(temporary)
+	}
+	return os.WriteFile(partValidatorPath(temporary), []byte(validator), 0600)
+}
+
+func discardPartValidator(temporary string) error {
+	if err := os.Remove(partValidatorPath(temporary)); err != nil &&
+		!errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// discardPartial removes a partial download and its recorded validator.
+func discardPartial(temporary string) error {
+	if err := os.Remove(temporary); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return discardPartValidator(temporary)
 }
 
 type progressReader struct {
