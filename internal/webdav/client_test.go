@@ -417,6 +417,115 @@ func TestDownloadResumeRevalidatesRemoteIdentity(t *testing.T) {
 	}
 }
 
+// TestDownloadFailsBeforeCommittingWhenTheSidecarIsUnusable asserts that a
+// sidecar that cannot be removed fails the transfer while the destination is
+// still untouched, never after it has been replaced. A sync caller treats an
+// error as a failed transfer and skips its baseline update, so an error paired
+// with an already-changed destination would leave the two permanently
+// disagreeing. Removal is made to fail by turning the sidecar path into a
+// non-empty directory, which os.Remove refuses.
+func TestDownloadFailsBeforeCommittingWhenTheSidecarIsUnusable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", request.Method)
+		}
+		writer.Header().Set("Content-Length", "5")
+		_, _ = io.WriteString(writer, "hello")
+	}))
+	defer server.Close()
+	local := filepath.Join(t.TempDir(), "report.txt")
+	if err := os.Mkdir(local+".part.etag", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local+".part.etag", "blocker"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	client := NewClient(Config{Server: server.URL, Username: "alice"}, server.Client())
+	err := client.DownloadWithOptions(
+		context.Background(), "/report.txt", local, TransferOptions{},
+	)
+	if err == nil {
+		t.Fatal("expected the unremovable sidecar to fail the download")
+	}
+	if _, statErr := os.Stat(local); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("destination was committed alongside error %v: %v", err, statErr)
+	}
+}
+
+// TestDownloadRestartNeverPairsStaleBytesWithANewValidator covers the crash
+// window opened by publishing a validator before the stale prefix is removed.
+// The failure is injected by making the partial path a directory, so opening it
+// for writing fails after the restart has been decided: the state left behind
+// must never let a later attempt append to bytes the validator does not
+// describe.
+func TestDownloadRestartNeverPairsStaleBytesWithANewValidator(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet {
+			t.Fatalf("unexpected method: %s", request.Method)
+		}
+		// The saved validator no longer matches, so the whole current entity is
+		// sent and the retained prefix must be discarded.
+		writer.Header().Set("ETag", `"v2"`)
+		_, _ = io.WriteString(writer, "BBBBBBBBBB")
+	}))
+	defer server.Close()
+	local := filepath.Join(t.TempDir(), "report.txt")
+	if err := os.Mkdir(local+".part", 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(local+".part.etag", []byte(`"v1"`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	client := NewClient(Config{Server: server.URL, Username: "alice"}, server.Client())
+	if err := client.DownloadWithOptions(
+		context.Background(), "/report.txt", local, TransferOptions{Resume: true},
+	); err == nil {
+		t.Fatal("expected the unwritable partial path to fail the download")
+	}
+	saved, err := readPartValidator(local + ".part")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved == `"v2"` {
+		t.Fatal("validator advanced to the new entity while the stale prefix remained")
+	}
+}
+
+// TestDownloadRejectsResumeWithConflictingValidator covers a 206 whose ETag
+// contradicts the If-Range the continuation was granted for. Appending would
+// splice two entities together, so the transfer must fail instead.
+func TestDownloadRejectsResumeWithConflictingValidator(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if got := request.Header.Get("If-Range"); got != `"v1"` {
+			t.Fatalf("If-Range: got %q", got)
+		}
+		writer.Header().Set("ETag", `"v2"`)
+		writer.Header().Set("Content-Range", "bytes 5-9/10")
+		writer.WriteHeader(http.StatusPartialContent)
+		_, _ = io.WriteString(writer, "BBBBB")
+	}))
+	defer server.Close()
+	local := filepath.Join(t.TempDir(), "report.txt")
+	writePartial(t, local, "AAAAA", `"v1"`)
+	client := NewClient(Config{Server: server.URL, Username: "alice"}, server.Client())
+	err := client.DownloadWithOptions(
+		context.Background(), "/report.txt", local, TransferOptions{Resume: true},
+	)
+	if err == nil || !strings.Contains(err.Error(), "validator") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(local); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("spliced content was committed: %v", err)
+	}
+	saved, err := readPartValidator(local + ".part")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved == `"v2"` {
+		t.Fatal("validator advanced to an entity the retained prefix does not belong to")
+	}
+}
+
 func TestDownloadResumeSendsIfRangeValidator(t *testing.T) {
 	var sawIfRange string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
