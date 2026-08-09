@@ -164,7 +164,7 @@ func TestWaitReturnsContextError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := retry.Wait(
-		ctx, time.Hour, 0, retry.MaxDelay,
+		ctx, time.Hour, 0, time.Hour,
 	); !errors.Is(err, context.Canceled) {
 		t.Fatalf("got %v, want the canceled context error", err)
 	}

@@ -116,6 +116,11 @@ func Delay(
 func Wait(
 	ctx context.Context, base time.Duration, attempt int, serverDelay time.Duration,
 ) error {
+	// Cancellation is the caller's terminal decision and takes precedence over
+	// retry policy, including refusal of an excessive server-requested delay.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	delay, err := Delay(base, attempt, serverDelay)
 	if err != nil {
 		return err
