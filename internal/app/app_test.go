@@ -3,6 +3,8 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -52,7 +55,7 @@ func TestFilesystemDryRunDoesNotContactServer(t *testing.T) {
 	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	if err := saveStore(defaultDependencies(), &store{Current: "work", Profiles: map[string]profile{
 		"work": {
-			Server: "http://127.0.0.1:1", Username: "alice",
+			Server: "http://127.0.0.1:1", Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		},
 	}}); err != nil {
@@ -85,7 +88,7 @@ func TestFilesystemDryRunPlansAllTransferKinds(t *testing.T) {
 	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	if err := saveStore(defaultDependencies(), &store{Current: "work", Profiles: map[string]profile{
 		"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		},
 	}}); err != nil {
@@ -164,7 +167,7 @@ func TestFilesystemMapsDAVStatusToStableKind(t *testing.T) {
 	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	if err := saveStore(defaultDependencies(), &store{Current: "work", Profiles: map[string]profile{
 		"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		},
 	}}); err != nil {
@@ -200,7 +203,7 @@ func TestFilesystemStatSuggestsMatchingSpace(t *testing.T) {
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		}},
 	}); err != nil {
@@ -254,7 +257,7 @@ func TestFilesystemUseCasesEndToEnd(t *testing.T) {
 	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	if err := saveStore(defaultDependencies(), &store{Current: "work", Profiles: map[string]profile{
 		"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		},
 	}}); err != nil {
@@ -319,7 +322,7 @@ func TestDoctorValidatesProfileAndCapabilities(t *testing.T) {
 	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	if err := saveStore(defaultDependencies(), &store{Current: "work", Profiles: map[string]profile{
 		"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		},
 	}}); err != nil {
@@ -387,7 +390,7 @@ func TestSpaceSelectionPersistsAndUsesSpaceDAVEndpoint(t *testing.T) {
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		}},
 	}); err != nil {
@@ -466,7 +469,7 @@ func TestCreateProjectSpace(t *testing.T) {
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		}},
 	}); err != nil {
@@ -523,7 +526,7 @@ func TestCreateProjectSpaceMapsForbiddenToAuthenticationError(t *testing.T) {
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		}},
 	}); err != nil {
@@ -600,7 +603,7 @@ func TestPublicLinkUseCases(t *testing.T) {
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		}},
 	}); err != nil {
@@ -695,7 +698,7 @@ func TestStandardStreamTransfers(t *testing.T) {
 	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	if err := saveStore(defaultDependencies(), &store{Current: "work", Profiles: map[string]profile{
 		"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		},
 	}}); err != nil {
@@ -751,7 +754,7 @@ func TestRecursiveFilesystemTransfersUseProtocolPort(t *testing.T) {
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		}},
 	}); err != nil {
@@ -801,7 +804,7 @@ func TestFilesystemTransferGuards(t *testing.T) {
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		}},
 	}); err != nil {
@@ -918,7 +921,7 @@ func TestRefreshAndBearerWebDAV(t *testing.T) {
 	configFile := filepath.Join(t.TempDir(), "config.json")
 	t.Setenv("OCIS_CONFIG", configFile)
 	s := &store{Current: "local", Profiles: map[string]profile{"local": {
-		Server: server.URL, Username: "einstein", ClientID: "cli", TokenURL: server.URL + "/token",
+		Server: server.URL, Insecure: true, Username: "einstein", ClientID: "cli", TokenURL: server.URL + "/token",
 		AccessToken: "expired", RefreshToken: "refresh", ExpiresAt: time.Now().Add(-time.Hour).Unix(),
 	}}}
 	if err := saveStore(defaultDependencies(), s); err != nil {
@@ -1002,6 +1005,244 @@ func TestCleartextServerRequiresInsecureOptIn(t *testing.T) {
 		Insecure: true,
 	}, options); err != nil {
 		t.Fatalf("cleartext server with --insecure: %v", err)
+	}
+}
+
+// TestHTTPClientRefusesToFollowADowngradeRedirect covers the gap that
+// validating only the base URL leaves open. Go decides whether to forward
+// Authorization across a redirect by comparing hosts alone, so an https endpoint
+// redirecting to http:// on the same host would carry the credential over
+// cleartext. Both the Basic and bearer cases run through this one client, so the
+// policy is tested below the authentication-specific clients.
+func TestHTTPClientRefusesToFollowADowngradeRedirect(t *testing.T) {
+	var cleartextRequests atomic.Int64
+	cleartext := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, request *http.Request,
+	) {
+		cleartextRequests.Add(1)
+		if request.Header.Get("Authorization") != "" {
+			t.Error("Authorization was forwarded over cleartext")
+		}
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer cleartext.Close()
+	var reachedFinal atomic.Int64
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, request *http.Request,
+	) {
+		switch request.URL.Path {
+		case "/final":
+			reachedFinal.Add(1)
+			writer.WriteHeader(http.StatusOK)
+		case "/same-scheme":
+			http.Redirect(writer, request, "/final", http.StatusFound)
+		default:
+			http.Redirect(writer, request, cleartext.URL+"/downgrade", http.StatusFound)
+		}
+	}))
+	defer secure.Close()
+
+	// A normal profile, with only the test server's certificate trusted so the
+	// insecure opt-in stays off and the downgrade must be refused.
+	client := httpClientFor(profile{}, time.Minute)
+	trustTestServer(t, client, secure)
+	request, err := http.NewRequestWithContext(
+		context.Background(), http.MethodGet, secure.URL+"/start", nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Authorization", "Bearer access-token")
+	response, err := client.Do(request) //nolint:bodyclose // no response body on the refused redirect
+	if err == nil {
+		_ = response.Body.Close()
+		t.Fatal("the downgrade redirect was followed")
+	}
+	if !strings.Contains(err.Error(), "http") ||
+		strings.Contains(err.Error(), "access-token") {
+		t.Fatalf("error must name the downgrade and no credential: %v", err)
+	}
+	if got := cleartextRequests.Load(); got != 0 {
+		t.Fatalf("cleartext requests: got %d, want none", got)
+	}
+
+	// An ordinary https-to-https redirect keeps working.
+	secureRedirect, err := http.NewRequestWithContext(
+		context.Background(), http.MethodGet, secure.URL+"/same-scheme", nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err = client.Do(secureRedirect)
+	if err != nil {
+		t.Fatalf("https redirect: %v", err)
+	}
+	_ = response.Body.Close()
+	if got := reachedFinal.Load(); got != 1 {
+		t.Fatalf("followed https redirects: got %d, want 1", got)
+	}
+}
+
+// TestInsecureProfileMayFollowADowngradeRedirect asserts the explicit
+// development opt-in still permits the downgrade it opted into.
+func TestInsecureProfileMayFollowADowngradeRedirect(t *testing.T) {
+	cleartext := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, _ *http.Request,
+	) {
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer cleartext.Close()
+	secure := httptest.NewTLSServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, request *http.Request,
+	) {
+		http.Redirect(writer, request, cleartext.URL+"/downgrade", http.StatusFound)
+	}))
+	defer secure.Close()
+	client := httpClientFor(profile{Insecure: true}, time.Minute)
+	request, err := http.NewRequestWithContext(
+		context.Background(), http.MethodGet, secure.URL+"/start", nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatalf("insecure profile: %v", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status: got %d", response.StatusCode)
+	}
+}
+
+// trustTestServer adds a test TLS server's certificate to a client built for a
+// normal profile, so a redirect policy can be tested without the insecure
+// opt-in that would also relax it.
+func trustTestServer(t *testing.T, client *http.Client, server *httptest.Server) {
+	t.Helper()
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport: got %T, want *http.Transport", client.Transport)
+	}
+	pool := x509.NewCertPool()
+	pool.AddCert(server.Certificate())
+	transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+}
+
+// TestLegacyCleartextProfileSendsNoCredentials covers a profile written by a
+// release that accepted cleartext without an opt-in. Rejecting only new entries
+// leaves such a profile able to send its saved password over the network, so the
+// stored URL is revalidated when the profile is selected. The listener records
+// any connection at all: the credential must never leave the process.
+func TestLegacyCleartextProfileSendsNoCredentials(t *testing.T) {
+	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, _ *http.Request,
+	) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	legacy := map[string]profile{
+		"basic": {
+			Server: server.URL, Username: "alice",
+			AuthType: "basic", Password: "secret",
+		},
+		"oidc": {
+			Server: server.URL, AuthType: "oidc", AccessToken: "access",
+			RefreshToken: "refresh", TokenURL: server.URL + "/token",
+			// Already expired, so a refresh would be attempted.
+			ExpiresAt: time.Now().Add(-time.Hour).Unix(),
+		},
+	}
+	if err := saveStore(defaultDependencies(), &store{
+		Current: "basic", Profiles: legacy,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	options := RunOptions{Out: io.Discard, Err: io.Discard}
+	for name := range legacy {
+		err := RunFilesystemWithOptions(context.Background(), FilesystemRequest{
+			Operation: "list", Source: "/",
+		}, name, options)
+		if err == nil {
+			t.Fatalf("%s: a cleartext profile was used for a remote command", name)
+		}
+		if !apperror.IsKind(err, apperror.KindUsage) {
+			t.Fatalf("%s: got %v, want a usage error", name, err)
+		}
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("requests: got %d, want none", got)
+	}
+
+	// The same profile must stay inspectable and repairable, or a user cannot
+	// recover from the rejection.
+	if err := RunServerWithOptions(
+		context.Background(), ServerRequest{Operation: "list"}, options,
+	); err != nil {
+		t.Fatalf("server list: %v", err)
+	}
+	if err := RunServerWithOptions(context.Background(), ServerRequest{
+		Operation: "remove", Name: "basic",
+	}, options); err != nil {
+		t.Fatalf("server remove: %v", err)
+	}
+}
+
+// TestLegacyCleartextProfileLoginIsRejectedBeforeThePasswordPrompt asserts that
+// a Basic login against a stored cleartext profile stops before any credential
+// is read or sent, because passing no new --server previously skipped
+// validation entirely.
+func TestLegacyCleartextProfileLoginIsRejectedBeforeThePasswordPrompt(t *testing.T) {
+	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv("OCIS_PASSWORD", "secret")
+	var requests atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, _ *http.Request,
+	) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusMultiStatus)
+		_, _ = io.WriteString(writer, appDAVList)
+	}))
+	defer server.Close()
+	if err := saveStore(defaultDependencies(), &store{
+		Current: "legacy",
+		Profiles: map[string]profile{
+			"legacy": {Server: server.URL, Username: "alice", AuthType: "basic"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	options := RunOptions{Out: io.Discard, Err: io.Discard}
+	err := RunAuthWithOptions(context.Background(), AuthRequest{
+		Operation: "login", Profile: "legacy", Mode: "basic", Username: "alice",
+	}, "", options)
+	if err == nil {
+		t.Fatal("Basic login against a cleartext profile succeeded")
+	}
+	if !apperror.IsKind(err, apperror.KindUsage) {
+		t.Fatalf("got %v, want a usage error", err)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Fatalf("requests: got %d, want none", got)
+	}
+	s, err := loadStore(defaultDependencies())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The opt-in stays explicit: a rejection must not migrate the profile.
+	if s.Profiles["legacy"].Insecure {
+		t.Fatal("a rejected profile was silently migrated to insecure")
+	}
+
+	// The same login succeeds once the user accepts the risk explicitly.
+	if err := RunAuthWithOptions(context.Background(), AuthRequest{
+		Operation: "login", Profile: "legacy", Mode: "basic",
+		Username: "alice", Insecure: true,
+	}, "", options); err != nil {
+		t.Fatalf("explicit --insecure login: %v", err)
 	}
 }
 
@@ -1127,7 +1368,7 @@ func TestLoginClearsDefaultSpaceOnlyWhenUserChanges(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			selected := profile{
-				Server: server.URL, Username: "alice", AuthType: "basic",
+				Server: server.URL, Insecure: true, Username: "alice", AuthType: "basic",
 				DefaultSpace: "space-id",
 			}
 			selected.DefaultSpaceOwner = profileIdentity(selected)
@@ -1292,7 +1533,7 @@ func TestBasicBearerSelection(t *testing.T) {
 		_, _ = io.WriteString(w, `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"><d:response><d:href>/remote.php/dav/files/fixture-user/</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response></d:multistatus>`)
 	}))
 	defer server.Close()
-	c := client{profile: profile{Server: server.URL, Username: "fixture-user", AuthType: "basic", Password: "fixture-password"}, http: server.Client()}
+	c := client{profile: profile{Server: server.URL, Insecure: true, Username: "fixture-user", AuthType: "basic", Password: "fixture-password"}, http: server.Client()}
 	if _, err := c.list("/"); err != nil {
 		t.Fatal(err)
 	}
@@ -1314,7 +1555,7 @@ func TestUploadSendsContentLength(t *testing.T) {
 	if err := os.WriteFile(local, []byte("alpha"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	c := client{profile: profile{Server: server.URL, Username: "alice", AuthType: "basic", Password: "secret"}, http: server.Client()}
+	c := client{profile: profile{Server: server.URL, Insecure: true, Username: "alice", AuthType: "basic", Password: "secret"}, http: server.Client()}
 	if err := c.davClient().Upload(context.Background(), local, "/alpha.txt"); err != nil {
 		t.Fatal(err)
 	}
@@ -1329,7 +1570,7 @@ func TestTopLevelFileAlias(t *testing.T) {
 	}))
 	defer server.Close()
 	if err := saveStore(defaultDependencies(), &store{Current: "work", Profiles: map[string]profile{"work": {
-		Server: server.URL, Username: "alice", AuthType: "basic", Password: "secret",
+		Server: server.URL, Insecure: true, Username: "alice", AuthType: "basic", Password: "secret",
 	}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -1352,7 +1593,7 @@ func TestMoveDoesNotOverwriteByDefault(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer server.Close()
-	c := client{profile: profile{Server: server.URL, Username: "alice", AuthType: "basic", Password: "secret"}, http: server.Client()}
+	c := client{profile: profile{Server: server.URL, Insecure: true, Username: "alice", AuthType: "basic", Password: "secret"}, http: server.Client()}
 	if err := c.move("/report.txt", "/archive/report.txt", false); err != nil {
 		t.Fatal(err)
 	}
@@ -1373,7 +1614,7 @@ func TestRemoveDirectoryRequiresRecursive(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	c := client{profile: profile{Server: server.URL, Username: "alice", AuthType: "basic", Password: "secret"}, http: server.Client()}
+	c := client{profile: profile{Server: server.URL, Insecure: true, Username: "alice", AuthType: "basic", Password: "secret"}, http: server.Client()}
 	if err := c.remove("/docs", false); !errors.Is(err, errRemoteIsDirectory) {
 		t.Fatalf("expected directory safety error, got %v", err)
 	}

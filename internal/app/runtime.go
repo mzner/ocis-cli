@@ -89,6 +89,15 @@ func newClientWithOptions(
 	if err != nil {
 		return nil, err
 	}
+	// Validated here, not only where a profile is created: a release before the
+	// https requirement stored cleartext profiles without an opt-in, and such a
+	// profile would otherwise still receive its saved password or token and send
+	// it over the network. Checked before any credential is applied or refreshed,
+	// and never during config.Load, so server list, status, logout, and
+	// server remove stay usable for repairing the profile.
+	if err := validateProfileServerURL(name, selectedProfile); err != nil {
+		return nil, err
+	}
 	if token := os.Getenv("OCIS_ACCESS_TOKEN"); token != "" {
 		selectedProfile.AuthType = "oidc"
 		selectedProfile.AccessToken = token
@@ -136,12 +145,46 @@ func newClientWithOptions(
 	return client, nil
 }
 
+// maxRedirects matches the limit Go's default redirect policy applies. It is
+// restated here because replacing that policy also replaces its limit.
+const maxRedirects = 10
+
 func httpClientFor(selectedProfile profile, timeout time.Duration) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if selectedProfile.Insecure {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // explicit per-profile development option
 	}
-	return &http.Client{Transport: transport, Timeout: timeout}
+	return &http.Client{
+		Transport:     transport,
+		Timeout:       timeout,
+		CheckRedirect: refuseCleartextRedirect(selectedProfile.Insecure),
+	}
+}
+
+// refuseCleartextRedirect returns a redirect policy that refuses to downgrade a
+// request to cleartext. Validating the base URL is not enough on its own: Go
+// decides whether to forward Authorization across a redirect by comparing hosts
+// alone, so an https endpoint redirecting to http:// on the same host would
+// carry the password or bearer token over the network in the clear. Only the
+// explicit insecure opt-in permits it.
+func refuseCleartextRedirect(insecure bool) func(*http.Request, []*http.Request) error {
+	return func(request *http.Request, via []*http.Request) error {
+		if len(via) >= maxRedirects {
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		}
+		if insecure || request.URL.Scheme == "https" {
+			return nil
+		}
+		// Only the scheme and host are named: a redirect target can carry
+		// credentials or other sensitive values in its path and query.
+		return fmt.Errorf(
+			"refusing to follow a redirect from https to %s://%s, "+
+				"which would send credentials over an unencrypted connection; "+
+				"pass --insecure to allow it for an explicitly trusted "+
+				"development server",
+			request.URL.Scheme, request.URL.Host,
+		)
+	}
 }
 
 func selectProfile(s *store, selected string) (string, profile, error) {
@@ -219,6 +262,25 @@ func validateServerURL(server string, insecure bool) error {
 		return appconfig.ValidateInsecureServerURL(server)
 	}
 	return appconfig.ValidateServerURL(server)
+}
+
+// validateProfileServerURL rejects a persisted profile whose stored URL would
+// carry credentials in the clear. The error names the profile and how to repair
+// it, because unlike a rejected command-line URL the user did not just type it.
+func validateProfileServerURL(name string, selectedProfile profile) error {
+	if err := validateServerURL(
+		selectedProfile.Server, selectedProfile.Insecure,
+	); err != nil {
+		return apperror.Wrap(
+			apperror.KindUsage, "profile "+name,
+			fmt.Errorf(
+				"%w; update it with ocis server add %s https://... or, for an "+
+					"explicitly trusted development server, re-add it with --insecure",
+				err, name,
+			),
+		)
+	}
+	return nil
 }
 
 func output(

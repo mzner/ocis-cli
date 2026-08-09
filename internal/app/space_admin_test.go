@@ -483,7 +483,7 @@ func configureSpaceTestProfile(
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: serverURL, Username: "alice",
+			Server: serverURL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 			DefaultSpace: defaultSpace,
 		}},

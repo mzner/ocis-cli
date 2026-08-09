@@ -311,7 +311,7 @@ func configureAdminTestProfile(t *testing.T, server string) {
 		&store{
 			Current: "work",
 			Profiles: map[string]profile{"work": {
-				Server: server, Username: "alice",
+				Server: server, Insecure: true, Username: "alice",
 				AuthType: "basic", Password: "secret",
 			}},
 		},

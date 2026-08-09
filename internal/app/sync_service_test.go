@@ -610,7 +610,7 @@ func syncTestDependencies(
 		Config: &memoryConfig{store: &appconfig.Store{
 			Version: appconfig.CurrentVersion, Current: "work",
 			Profiles: map[string]appconfig.Profile{"work": {
-				Server: server, Username: "alice", AuthType: "basic",
+				Server: server, Insecure: true, Username: "alice", AuthType: "basic",
 			}},
 		}},
 		Credentials: &memoryCredentials{

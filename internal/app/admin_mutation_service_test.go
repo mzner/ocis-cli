@@ -351,7 +351,7 @@ func TestResolveMFAACRUsesServerCapability(t *testing.T) {
 	defer server.Close()
 	acr, err := resolveMFAACR(
 		context.Background(),
-		profile{Server: server.URL, AuthType: "basic"},
+		profile{Server: server.URL, Insecure: true, AuthType: "basic"},
 		"", RunOptions{Timeout: time.Second}.normalized(),
 	)
 	if err != nil || acr != "urn:ocis:mfa" {

@@ -318,7 +318,19 @@ reduces exposure as follows:
 the only way to accept a cleartext `http://` server URL. Without it, a server
 URL must use `https`, because every authenticated request carries a Basic
 password or bearer token and cleartext would expose it to anyone on the network
-path. With it, traffic may still be encrypted, but an active attacker can
+path.
+
+The requirement covers a stored URL, not just a newly entered one: a profile
+saved by an earlier release is re-checked when it is selected, before any
+credential is read from the keyring, applied from `OCIS_ACCESS_TOKEN`, or
+refreshed. A rejected profile stays inspectable and repairable with
+`server list`, `status`, `logout`, and `server remove`, and is never migrated to
+`insecure` automatically. Redirects are checked too: an `https` endpoint that
+redirects to `http://`, even on the same host, is refused rather than followed,
+because Go decides whether to forward the `Authorization` header by comparing
+hostnames alone.
+
+With `--insecure`, traffic may still be encrypted, but an active attacker can
 impersonate the server or identity provider and steal passwords, authorization
 codes, client secrets, or tokens. Use it only for a development server whose
 network path you trust.
