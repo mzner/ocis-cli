@@ -19,6 +19,7 @@ internal/
   httpapi/            authenticated retrying HTTP transport
   logging/            opt-in diagnostic logging abstraction
   output/             terminal and JSON/JSONL rendering
+  retry/              shared bounded retry and backoff policy
   search/             WebDAV search-files REPORT client and response mapping
   sharing/            OCS share discovery, public-link, and capability client
   sync/               deterministic one-way and bidirectional planning model
@@ -80,10 +81,14 @@ without starting a subprocess.
   public-link permission facets; and mutate resource tags by stable resource
   ID. Identity and authorization policy remain on the server.
 - `internal/httpapi`: send replayable authenticated API requests with bounded
-  retries for non-WebDAV protocols.
+  retries for non-WebDAV protocols, using the shared `internal/retry` policy.
 - `internal/logging`: provide an injected no-op or text diagnostic logger.
 - `internal/output`: render human-readable output and versioned JSON/JSONL
   envelopes through injected writers.
+- `internal/retry`: decide which responses may be retried and how long to wait,
+  honoring a server-requested delay exactly within one ceiling and refusing a
+  longer one, so no response can suspend an operation indefinitely and no retry
+  arrives before a throttling server allows it.
 - `internal/search`: issue bounded `search-files` REPORT requests and decode
   ranked WebDAV multistatus responses without depending on Cobra or Space
   selection policy.
@@ -209,6 +214,13 @@ Fast package tests remain Docker-independent.
   planner; job configuration never implements a second transfer path.
 - An unavailable persisted Space is cleared and reported; commands never
   silently fall back to personal files.
+- Retry policy lives only in `internal/retry`. Every wait between attempts,
+  whether requested by a server through `Retry-After` or produced by
+  exponential backoff, is bounded by one ceiling. A response never controls how
+  long the CLI pauses, because no request timeout applies while it waits. A
+  server-requested delay is honored exactly or refused, never shortened: an
+  exponential delay is the CLI's own choice and may be clamped, but retrying
+  before a throttling server allows can extend a rate-limit ban.
 - Cancellation propagates through Cobra contexts, application use cases, HTTP
   requests, and transfer workers and maps to exit code 130.
 - New behavior requires tests at its narrowest package boundary.

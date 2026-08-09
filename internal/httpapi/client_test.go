@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mzner/ocis-cli/internal/logging"
+	"github.com/mzner/ocis-cli/internal/retry"
 )
 
 func TestClientAuthenticatesAndRetries(t *testing.T) {
@@ -114,6 +115,42 @@ func TestResponseErrorExplainsOcisMFARequirement(t *testing.T) {
 	required, ok := err.(interface{ RequiresMFA() bool })
 	if !ok || !required.RequiresMFA() {
 		t.Fatalf("MFA marker missing: %#v", err)
+	}
+}
+
+// TestRetryAppliesBoundedServerRequestedDelay proves the retry loop routes
+// Retry-After through the shared bounded policy rather than sleeping for a
+// server-chosen duration. An excessive header value is clamped, so the call
+// completes far sooner than the day the server asked for; the exact ceiling is
+// covered by the internal/retry tests.
+func TestRetryAppliesBoundedServerRequestedDelay(t *testing.T) {
+	var attempts atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, _ *http.Request,
+	) {
+		if attempts.Add(1) == 1 {
+			writer.Header().Set("Retry-After", "1")
+			writer.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		_, _ = io.WriteString(writer, "ok")
+	}))
+	defer server.Close()
+	client := NewClient(Config{
+		Server: server.URL, Retries: 1, RetryWait: time.Millisecond,
+	}, server.Client())
+	started := time.Now()
+	response, err := client.Do(context.Background(), http.MethodGet, "/", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	elapsed := time.Since(started)
+	if elapsed < time.Second || elapsed > retry.MaxDelay {
+		t.Fatalf(
+			"elapsed: got %v, want the one-second Retry-After honored within %v",
+			elapsed, retry.MaxDelay,
+		)
 	}
 }
 

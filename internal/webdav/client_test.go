@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mzner/ocis-cli/internal/logging"
+	"github.com/mzner/ocis-cli/internal/retry"
 )
 
 func TestClientRetriesTemporaryResponse(t *testing.T) {
@@ -43,6 +44,71 @@ func TestClientRetriesTemporaryResponse(t *testing.T) {
 	}
 	if !strings.Contains(diagnostics.String(), "attempt=2 reason=503 Service Unavailable") {
 		t.Fatalf("diagnostics: %q", diagnostics.String())
+	}
+}
+
+// TestClientRetryAppliesBoundedServerRequestedDelay proves the WebDAV retry
+// loop routes Retry-After through the shared bounded policy: the header is
+// honored, and the wait cannot exceed the ceiling regardless of the value sent.
+// internal/retry covers clamping of an excessive value directly, because
+// observing the full ceiling here would mean a test that sleeps for it.
+func TestClientRetryAppliesBoundedServerRequestedDelay(t *testing.T) {
+	var attempts atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if attempts.Add(1) == 1 {
+			writer.Header().Set("Retry-After", "1")
+			writer.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		writeDAVFile(writer, request.URL.Path, 4)
+	}))
+	defer server.Close()
+	client := NewClient(Config{
+		Server: server.URL, Username: "alice", Retries: 1,
+		RetryWait: time.Millisecond,
+	}, server.Client())
+	started := time.Now()
+	if _, err := client.Stat(context.Background(), "/report.txt"); err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(started)
+	if elapsed < time.Second || elapsed > retry.MaxDelay {
+		t.Fatalf(
+			"elapsed: got %v, want the one-second Retry-After honored within %v",
+			elapsed, retry.MaxDelay,
+		)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempts: got %d, want 2", got)
+	}
+}
+
+// TestClientStopsWhenRetryAfterExceedsTheCeiling proves the WebDAV retry loop
+// neither waits out an excessive Retry-After nor retries before it expires: the
+// throttled endpoint must receive no follow-up request.
+func TestClientStopsWhenRetryAfterExceedsTheCeiling(t *testing.T) {
+	var attempts atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		attempts.Add(1)
+		writer.Header().Set("Retry-After", "86400")
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client := NewClient(Config{
+		Server: server.URL, Username: "alice", Retries: 3,
+		RetryWait: time.Millisecond,
+	}, server.Client())
+	started := time.Now()
+	_, err := client.Stat(context.Background(), "/report.txt")
+	var excessive *retry.DelayTooLongError
+	if !errors.As(err, &excessive) {
+		t.Fatalf("error: got %v, want a refused retry delay", err)
+	}
+	if elapsed := time.Since(started); elapsed > retry.MaxDelay {
+		t.Fatalf("elapsed: got %v, want a prompt refusal", elapsed)
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("attempts: got %d, want no follow-up request", got)
 	}
 }
 

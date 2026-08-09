@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mzner/ocis-cli/internal/logging"
+	"github.com/mzner/ocis-cli/internal/retry"
 )
 
 // Config contains shared authentication and retry settings.
@@ -89,7 +90,7 @@ func (client *Client) Do(
 		}
 		client.authenticate(request)
 		response, err := client.http.Do(request)
-		if err == nil && (!retryableStatus(response.StatusCode) || attempt >= client.config.Retries) {
+		if err == nil && (!retry.RetryableStatus(response.StatusCode) || attempt >= client.config.Retries) {
 			return response, nil
 		}
 		if err != nil && attempt >= client.config.Retries {
@@ -97,14 +98,14 @@ func (client *Client) Do(
 		}
 		delay, reason := time.Duration(0), "transport_error"
 		if response != nil {
-			delay, reason = retryAfter(response), response.Status
+			delay, reason = retry.After(response), response.Status
 			_ = response.Body.Close()
 		}
 		client.config.Logger.Debug(
 			"retrying API request",
 			"method", method, "attempt", attempt+2, "reason", reason,
 		)
-		if err := waitRetry(ctx, client.config.RetryWait, attempt, delay); err != nil {
+		if err := retry.Wait(ctx, client.config.RetryWait, attempt, delay); err != nil {
 			return nil, err
 		}
 	}
@@ -154,36 +155,5 @@ func (client *Client) authenticate(request *http.Request) {
 	}
 	if client.config.UserAgent != "" {
 		request.Header.Set("User-Agent", client.config.UserAgent)
-	}
-}
-
-func retryableStatus(status int) bool {
-	return status == http.StatusTooManyRequests || status >= 500
-}
-
-func retryAfter(response *http.Response) time.Duration {
-	value := response.Header.Get("Retry-After")
-	if seconds, err := time.ParseDuration(value + "s"); err == nil && seconds > 0 {
-		return seconds
-	}
-	if when, err := http.ParseTime(value); err == nil {
-		return max(time.Until(when), 0)
-	}
-	return 0
-}
-
-func waitRetry(
-	ctx context.Context, base time.Duration, attempt int, delay time.Duration,
-) error {
-	if delay <= 0 {
-		delay = base * time.Duration(1<<min(attempt, 4))
-	}
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
 	}
 }
