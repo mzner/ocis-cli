@@ -43,7 +43,11 @@ func newServerAddCommand(options *globalOptions) *cobra.Command {
 			})
 		},
 	}
-	command.Flags().BoolVar(&insecure, "insecure", false, "skip TLS certificate verification for this profile")
+	command.Flags().BoolVar(
+		&insecure, "insecure", false,
+		"allow a cleartext http:// URL and skip TLS certificate verification "+
+			"for this profile",
+	)
 	command.Flags().StringVar(&clientID, "client-id", "", "OIDC client ID")
 	return command
 }

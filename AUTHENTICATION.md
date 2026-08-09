@@ -314,10 +314,27 @@ reduces exposure as follows:
 | Server | oCIS or its IdP validates credentials and receives tokens or Basic credentials. | A malicious or compromised server can misuse credentials sent to it. |
 | Output and logs | Status/JSON report metadata, not secrets. Retry logs exclude authorization headers and request bodies. | Server-controlled error text can be unexpected; review output before publishing it. |
 
-`--insecure` disables TLS certificate verification for the profile. Traffic
-may still be encrypted, but an active attacker can impersonate the server or
-identity provider and steal passwords, authorization codes, client secrets, or
-tokens. Use it only for a development server whose network path you trust.
+`--insecure` disables TLS certificate verification for the profile and is also
+the only way to accept a cleartext `http://` server URL. Without it, a server
+URL must use `https`, because every authenticated request carries a Basic
+password or bearer token and cleartext would expose it to anyone on the network
+path.
+
+The requirement covers a stored URL, not just a newly entered one: a profile
+saved by an earlier release is re-checked when it is selected, before
+`OCIS_ACCESS_TOKEN` is applied, a token is refreshed, or an authenticated
+request is sent. Profile loading may already have read its secret from the
+keyring into process memory, but the rejected URL cannot receive it. A rejected
+profile stays inspectable and repairable with `server list`, `status`, `logout`,
+and `server remove`, and is never migrated to `insecure` automatically.
+Redirects are checked too: an `https` endpoint that redirects to `http://`, even
+on the same host, is refused rather than followed, because Go decides whether
+to forward the `Authorization` header by comparing hostnames alone.
+
+With `--insecure`, traffic may still be encrypted, but an active attacker can
+impersonate the server or identity provider and steal passwords, authorization
+codes, client secrets, or tokens. Use it only for a development server whose
+network path you trust.
 
 ## Logout, removal, and revocation
 

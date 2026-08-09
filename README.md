@@ -126,7 +126,15 @@ ocis login \
   --insecure
 ```
 
-`--insecure` is saved on that profile and only affects its TLS connections.
+`--insecure` is saved on that profile and only affects its connections. A server
+URL must otherwise use `https`, because every authenticated request carries a
+password or access token; `--insecure` is also what permits a cleartext
+`http://` URL for a development server whose network path you trust. The check
+applies to a stored URL as well as a new one, and a redirect from `https` to
+`http://` is refused rather than followed. A profile saved by an earlier release
+that used cleartext is reported when selected and can be repaired with
+`ocis server add NAME https://...`; `server list`, `status`, `logout`, and
+`server remove` keep working meanwhile.
 
 If the deployment enables Basic authentication:
 

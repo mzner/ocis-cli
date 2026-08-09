@@ -110,7 +110,7 @@ func TestPublicLinkInfoAndUpdate(t *testing.T) {
 	if err := saveStore(defaultDependencies(), &store{
 		Current: "work",
 		Profiles: map[string]profile{"work": {
-			Server: server.URL, Username: "alice",
+			Server: server.URL, Insecure: true, Username: "alice",
 			AuthType: "basic", Password: "secret",
 		}},
 	}); err != nil {

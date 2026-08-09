@@ -163,11 +163,41 @@ func Save(store *Store) error {
 	return os.Rename(tempPath, configPath)
 }
 
-// ValidateServerURL validates a user-provided oCIS base URL.
+// ValidateServerURL validates a user-provided oCIS base URL and requires TLS.
+// Every authenticated request carries a Basic password or a bearer token, so a
+// cleartext server URL would expose the credential to anyone on the path. Use
+// ValidateInsecureServerURL when the caller explicitly accepted that risk.
 func ValidateServerURL(server string) error {
-	parsed, err := url.ParseRequestURI(server)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return fmt.Errorf("invalid server URL %q; expected http:// or https:// URL", server)
+	parsed, err := parseServerURL(server)
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "https" {
+		return fmt.Errorf(
+			"server URL %q must use https; "+
+				"pass --insecure to allow a cleartext connection to an "+
+				"explicitly trusted development server",
+			server,
+		)
 	}
 	return nil
+}
+
+// ValidateInsecureServerURL validates a user-provided oCIS base URL, permitting
+// cleartext http. It is reached only after an explicit insecure opt-in; the URL
+// must still be usable.
+func ValidateInsecureServerURL(server string) error {
+	_, err := parseServerURL(server)
+	return err
+}
+
+func parseServerURL(server string) (*url.URL, error) {
+	parsed, err := url.ParseRequestURI(server)
+	if err != nil || parsed.Host == "" ||
+		(parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return nil, fmt.Errorf(
+			"invalid server URL %q; expected http:// or https:// URL", server,
+		)
+	}
+	return parsed, nil
 }

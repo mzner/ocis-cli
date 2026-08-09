@@ -43,7 +43,7 @@ func runAuth(ctx context.Context, request AuthRequest, selected string, options 
 			selected = request.Profile
 		}
 		if server != "" {
-			if err := validateServerURL(server); err != nil {
+			if err := validateServerURL(server, request.Insecure); err != nil {
 				return apperror.Wrap(apperror.KindUsage, "login", err)
 			}
 			if name == "" {
@@ -73,6 +73,14 @@ func runAuth(ctx context.Context, request AuthRequest, selected string, options 
 		}
 		if request.Insecure {
 			p.Insecure = true
+		}
+		// A login without a new --server reuses the stored URL, which a release
+		// before the https requirement may have saved as cleartext. Checked after
+		// request.Insecure is applied, so the flag still opts in, and before a new
+		// password is obtained, a browser is opened, discovery runs, or a probe is
+		// sent.
+		if err := validateProfileServerURL(name, p); err != nil {
+			return err
 		}
 		authType := request.Mode
 		if authType == "" {

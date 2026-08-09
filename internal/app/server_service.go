@@ -20,7 +20,7 @@ func runServer(_ context.Context, request ServerRequest, options RunOptions) err
 	switch request.Operation {
 	case ServerAdd:
 		name, server := request.Name, strings.TrimRight(request.Server, "/")
-		if err := validateServerURL(server); err != nil {
+		if err := validateServerURL(server, request.Insecure); err != nil {
 			return apperror.Wrap(apperror.KindUsage, "add server", err)
 		}
 		clientID := request.ClientID

@@ -28,7 +28,10 @@ func newLoginCommand(options *globalOptions) *cobra.Command {
 	flags.StringVar(&authType, "auth", "", "authentication mode: oidc or basic")
 	flags.StringVar(&username, "username", "", "username for Basic authentication")
 	flags.StringVar(&clientID, "client-id", "", "OIDC client ID")
-	flags.BoolVar(&insecure, "insecure", false, "skip TLS certificate verification")
+	flags.BoolVar(
+		&insecure, "insecure", false,
+		"allow a cleartext http:// server and skip TLS certificate verification",
+	)
 	flags.BoolVar(&noBrowser, "no-browser", false, "print the authorization URL without opening it")
 	flags.BoolVar(
 		&mfa, "mfa", false,

@@ -50,7 +50,7 @@ func TestStaleDefaultSpaceIsClearedAndCommandFails(t *testing.T) {
 	}))
 	defer server.Close()
 	selected := profile{
-		Server: server.URL, AuthType: "basic", Username: "alice",
+		Server: server.URL, Insecure: true, AuthType: "basic", Username: "alice",
 		DefaultSpace: "missing-space",
 	}
 	selected.DefaultSpaceOwner = profileIdentity(selected)
