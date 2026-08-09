@@ -2,7 +2,9 @@ package retry_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,19 +41,64 @@ func TestAfterParsesHTTPDate(t *testing.T) {
 	}
 }
 
-func TestAfterCapsServerControlledDelay(t *testing.T) {
+// TestAfterReportsAnExcessiveDelayWithoutSaturating checks that a delay beyond
+// anything worth waiting for is still reported as the large value it is, so the
+// policy can refuse it and name it, rather than being silently rounded down to
+// the ceiling or wrapping to a negative duration.
+func TestAfterReportsAnExcessiveDelayWithoutSaturating(t *testing.T) {
 	values := []string{
 		"86400",
 		"999999999999999999999",
 		time.Now().Add(72 * time.Hour).UTC().Format(http.TimeFormat),
 	}
 	for _, value := range values {
-		if got := retry.After(responseWith(value)); got != retry.MaxDelay {
+		if got := retry.After(responseWith(value)); got <= retry.MaxDelay {
 			t.Fatalf(
-				"Retry-After %q: got %v, want the %v ceiling",
+				"Retry-After %q: got %v, want a value above the %v ceiling",
 				value, got, retry.MaxDelay,
 			)
 		}
+	}
+}
+
+// TestDelayRefusesToRetryBeforeTheServerAllows covers the case where honoring
+// Retry-After would exceed the local ceiling. Waiting that long is
+// indistinguishable from a hang, and retrying sooner contradicts legitimate
+// throttling guidance and can extend a rate-limit ban, so the operation stops
+// with both durations named.
+func TestDelayRefusesToRetryBeforeTheServerAllows(t *testing.T) {
+	_, err := retry.Delay(time.Millisecond, 0, 24*time.Hour)
+	if err == nil {
+		t.Fatal("expected an excessive Retry-After to stop the operation")
+	}
+	var excessive *retry.DelayTooLongError
+	if !errors.As(err, &excessive) {
+		t.Fatalf("error type: got %T, want *retry.DelayTooLongError", err)
+	}
+	if excessive.Requested != 24*time.Hour || excessive.Ceiling != retry.MaxDelay {
+		t.Fatalf("durations: got %v and %v", excessive.Requested, excessive.Ceiling)
+	}
+	if !strings.Contains(err.Error(), "24h0m0s") ||
+		!strings.Contains(err.Error(), retry.MaxDelay.String()) {
+		t.Fatalf("message must name both durations: %v", err)
+	}
+}
+
+func TestDelayHonorsAServerDelayWithinTheCeiling(t *testing.T) {
+	got, err := retry.Delay(time.Millisecond, 0, retry.MaxDelay)
+	if err != nil || got != retry.MaxDelay {
+		t.Fatalf("delay: got %v, %v; want the ceiling honored", got, err)
+	}
+}
+
+func TestWaitRefusesAnExcessiveServerDelayPromptly(t *testing.T) {
+	started := time.Now()
+	err := retry.Wait(context.Background(), time.Millisecond, 0, time.Hour)
+	if err == nil {
+		t.Fatal("expected an excessive Retry-After to stop the operation")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("elapsed: got %v, want a prompt refusal", elapsed)
 	}
 }
 
@@ -79,24 +126,27 @@ func TestDelayGrowsExponentiallyFromTheBase(t *testing.T) {
 		3200 * time.Millisecond,
 		3200 * time.Millisecond,
 	} {
-		if got := retry.Delay(base, attempt, 0); got != want {
-			t.Fatalf("Delay(attempt %d): got %v, want %v", attempt, got, want)
+		got, err := retry.Delay(base, attempt, 0)
+		if err != nil || got != want {
+			t.Fatalf("Delay(attempt %d): got %v, %v; want %v", attempt, got, err, want)
 		}
 	}
 }
 
 func TestDelayPrefersServerDelay(t *testing.T) {
-	if got := retry.Delay(time.Millisecond, 0, 7*time.Second); got != 7*time.Second {
-		t.Fatalf("delay: got %v, want 7s", got)
+	got, err := retry.Delay(time.Millisecond, 0, 7*time.Second)
+	if err != nil || got != 7*time.Second {
+		t.Fatalf("delay: got %v, %v; want 7s", got, err)
 	}
 }
 
-func TestDelayCapsEveryDelay(t *testing.T) {
-	if got := retry.Delay(time.Hour, 3, 0); got != retry.MaxDelay {
-		t.Fatalf("backoff delay: got %v, want the %v ceiling", got, retry.MaxDelay)
-	}
-	if got := retry.Delay(time.Millisecond, 0, 24*time.Hour); got != retry.MaxDelay {
-		t.Fatalf("server delay: got %v, want the %v ceiling", got, retry.MaxDelay)
+// TestDelayCapsLocalBackoff covers the ceiling for a delay the CLI chose
+// itself. Unlike a server-requested delay, shortening it contradicts nothing,
+// so it is clamped rather than refused.
+func TestDelayCapsLocalBackoff(t *testing.T) {
+	got, err := retry.Delay(time.Hour, 3, 0)
+	if err != nil || got != retry.MaxDelay {
+		t.Fatalf("backoff delay: got %v, %v; want the %v ceiling", got, err, retry.MaxDelay)
 	}
 }
 
@@ -113,8 +163,10 @@ func TestWaitSleepsTheComputedDelay(t *testing.T) {
 func TestWaitReturnsContextError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if err := retry.Wait(ctx, time.Hour, 0, time.Hour); err == nil {
-		t.Fatal("expected the canceled context error")
+	if err := retry.Wait(
+		ctx, time.Hour, 0, retry.MaxDelay,
+	); !errors.Is(err, context.Canceled) {
+		t.Fatalf("got %v, want the canceled context error", err)
 	}
 }
 

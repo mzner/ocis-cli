@@ -83,6 +83,35 @@ func TestClientRetryAppliesBoundedServerRequestedDelay(t *testing.T) {
 	}
 }
 
+// TestClientStopsWhenRetryAfterExceedsTheCeiling proves the WebDAV retry loop
+// neither waits out an excessive Retry-After nor retries before it expires: the
+// throttled endpoint must receive no follow-up request.
+func TestClientStopsWhenRetryAfterExceedsTheCeiling(t *testing.T) {
+	var attempts atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		attempts.Add(1)
+		writer.Header().Set("Retry-After", "86400")
+		writer.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+	client := NewClient(Config{
+		Server: server.URL, Username: "alice", Retries: 3,
+		RetryWait: time.Millisecond,
+	}, server.Client())
+	started := time.Now()
+	_, err := client.Stat(context.Background(), "/report.txt")
+	var excessive *retry.DelayTooLongError
+	if !errors.As(err, &excessive) {
+		t.Fatalf("error: got %v, want a refused retry delay", err)
+	}
+	if elapsed := time.Since(started); elapsed > retry.MaxDelay {
+		t.Fatalf("elapsed: got %v, want a prompt refusal", elapsed)
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("attempts: got %d, want no follow-up request", got)
+	}
+}
+
 func TestClientRetryHonorsContext(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		writer.WriteHeader(http.StatusServiceUnavailable)

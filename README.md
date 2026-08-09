@@ -629,9 +629,12 @@ ocis download /notes/hello.txt - > hello.txt
 ```
 
 Temporary network errors, HTTP `429`, and HTTP `5xx` responses are retried with
-bounded exponential backoff. A server may ask for a specific delay with
-`Retry-After` and the CLI honors it, but never waits longer than 30 seconds
-between attempts, so no response can stall a command indefinitely. Global
+bounded exponential backoff, never waiting longer than 30 seconds between
+attempts. A server may ask for a specific delay with `Retry-After`; the CLI
+honors it exactly when it is within that limit. A longer delay stops the command
+with an error naming the requested wait, because retrying sooner than a
+throttling server allows can extend a rate-limit ban — run the command again
+later. Either way no response can stall a command indefinitely. Global
 reliability controls are available on every command:
 
 ```sh
