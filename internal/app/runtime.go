@@ -211,7 +211,13 @@ func applyProfileSecret(selectedProfile *profile, secret credentials.Secret) {
 	selectedProfile.RefreshToken = secret.RefreshToken
 }
 
-func validateServerURL(server string) error {
+// validateServerURL rejects a cleartext server URL unless the caller passed
+// --insecure, which is the same opt-in that already permits cleartext OIDC
+// endpoints and unverified certificates for a trusted development server.
+func validateServerURL(server string, insecure bool) error {
+	if insecure {
+		return appconfig.ValidateInsecureServerURL(server)
+	}
 	return appconfig.ValidateServerURL(server)
 }
 

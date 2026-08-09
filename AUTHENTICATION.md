@@ -314,10 +314,14 @@ reduces exposure as follows:
 | Server | oCIS or its IdP validates credentials and receives tokens or Basic credentials. | A malicious or compromised server can misuse credentials sent to it. |
 | Output and logs | Status/JSON report metadata, not secrets. Retry logs exclude authorization headers and request bodies. | Server-controlled error text can be unexpected; review output before publishing it. |
 
-`--insecure` disables TLS certificate verification for the profile. Traffic
-may still be encrypted, but an active attacker can impersonate the server or
-identity provider and steal passwords, authorization codes, client secrets, or
-tokens. Use it only for a development server whose network path you trust.
+`--insecure` disables TLS certificate verification for the profile and is also
+the only way to accept a cleartext `http://` server URL. Without it, a server
+URL must use `https`, because every authenticated request carries a Basic
+password or bearer token and cleartext would expose it to anyone on the network
+path. With it, traffic may still be encrypted, but an active attacker can
+impersonate the server or identity provider and steal passwords, authorization
+codes, client secrets, or tokens. Use it only for a development server whose
+network path you trust.
 
 ## Logout, removal, and revocation
 

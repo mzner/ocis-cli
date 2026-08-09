@@ -43,7 +43,7 @@ func runAuth(ctx context.Context, request AuthRequest, selected string, options 
 			selected = request.Profile
 		}
 		if server != "" {
-			if err := validateServerURL(server); err != nil {
+			if err := validateServerURL(server, request.Insecure); err != nil {
 				return apperror.Wrap(apperror.KindUsage, "login", err)
 			}
 			if name == "" {

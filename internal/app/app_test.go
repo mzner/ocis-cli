@@ -965,6 +965,46 @@ func TestServerAddAndUse(t *testing.T) {
 	}
 }
 
+// TestCleartextServerRequiresInsecureOptIn covers both entry points that accept
+// a server URL. A cleartext URL would send the Basic password or bearer token
+// in the clear on every later request, so it is refused as a usage error and no
+// profile is stored; --insecure keeps the local-development case available.
+func TestCleartextServerRequiresInsecureOptIn(t *testing.T) {
+	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
+	options := RunOptions{Out: io.Discard, Err: io.Discard}
+
+	err := RunServerWithOptions(context.Background(), ServerRequest{
+		Operation: "add", Name: "work", Server: "http://cloud.example",
+	}, options)
+	if err == nil {
+		t.Fatal("adding a cleartext server succeeded")
+	}
+	if !apperror.IsKind(err, apperror.KindUsage) {
+		t.Fatalf("got %v, want a usage error", err)
+	}
+	s, err := loadStore(defaultDependencies())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := s.Profiles["work"]; exists {
+		t.Fatal("a rejected server was still saved")
+	}
+
+	if err := RunAuthWithOptions(context.Background(), AuthRequest{
+		Operation: "login", Server: "http://cloud.example", Name: "work",
+		Mode: "basic", Username: "alice",
+	}, "", options); err == nil {
+		t.Fatal("logging in to a cleartext server succeeded")
+	}
+
+	if err := RunServerWithOptions(context.Background(), ServerRequest{
+		Operation: "add", Name: "local", Server: "http://localhost:9200",
+		Insecure: true,
+	}, options); err != nil {
+		t.Fatalf("cleartext server with --insecure: %v", err)
+	}
+}
+
 func TestServerListRemoveAndErrors(t *testing.T) {
 	t.Setenv("OCIS_CONFIG", filepath.Join(t.TempDir(), "config.json"))
 	var output bytes.Buffer
@@ -1016,7 +1056,7 @@ func TestBasicLoginStatusAndLogout(t *testing.T) {
 	options := RunOptions{Out: &output, Err: io.Discard, Timeout: time.Second}
 	if err := RunAuthWithOptions(context.Background(), AuthRequest{
 		Operation: "login", Server: server.URL, Name: "work",
-		Mode: "basic", Username: "alice",
+		Mode: "basic", Username: "alice", Insecure: true,
 	}, "", options); err != nil {
 		t.Fatal(err)
 	}
@@ -1049,7 +1089,7 @@ func TestBasicLoginProbeUsesCallerContext(t *testing.T) {
 	cancel()
 	err := RunAuthWithOptions(ctx, AuthRequest{
 		Operation: "login", Server: server.URL, Name: "work",
-		Mode: "basic", Username: "alice",
+		Mode: "basic", Username: "alice", Insecure: true,
 	}, "", RunOptions{
 		Out: io.Discard, Err: io.Discard, Timeout: time.Second,
 	})
