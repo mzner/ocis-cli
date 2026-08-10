@@ -1204,6 +1204,44 @@ sharing restrictions, and resource permissions. A user may be able to read a
 file without being allowed to share it, update a share, or remove another
 user's permission.
 
+## Notifications
+
+List and inspect the authenticated user's unread in-app notifications:
+
+```sh
+ocis notification list
+ocis notification list report
+ocis notification info NOTIFICATION_ID
+ocis --json notification list
+```
+
+The optional `list` argument searches locally across the notification ID,
+actor, subject, message, application, and related object. Human output shows
+the newest notifications first; JSON and JSONL retain the full mapped server
+record for automation.
+
+In oCIS, marking a notification as read removes it from the unread userlog.
+The CLI calls that operation `dismiss`; `read` is an equivalent alias. It does
+not delete a file, share, or other referenced resource:
+
+```sh
+ocis notification dismiss NOTIFICATION_ID --dry-run
+ocis notification dismiss NOTIFICATION_ID
+ocis notification read NOTIFICATION_ID
+```
+
+Multiple IDs are dismissed in one server request. Clearing the complete unread
+list is explicit, prompts for confirmation, and can be previewed safely:
+
+```sh
+ocis notification clear --dry-run
+ocis notification clear
+```
+
+The server controls which events create notifications and whether its
+notification service is enabled. These commands manage only notifications
+visible to the currently selected CLI profile.
+
 ## Machine-readable output
 
 `--json` writes one indented result and `--jsonl` writes one compact record per

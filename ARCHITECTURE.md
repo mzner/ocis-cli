@@ -19,6 +19,7 @@ internal/
   graph/              LibreGraph Spaces, directory, and permission client
   httpapi/            authenticated retrying HTTP transport
   logging/            opt-in diagnostic logging abstraction
+  notifications/      authenticated oCIS userlog/OCS notification client
   output/             terminal and JSON/JSONL rendering
   retry/              shared bounded retry and backoff policy
   search/             WebDAV search-files REPORT client and response mapping
@@ -57,6 +58,7 @@ without starting a subprocess.
   `batch_service.go`, `filesystem_service.go`, `filesystem_tree_service.go`,
   `filesystem_du_service.go`, `filesystem_touch_service.go`,
   `filesystem_walk.go`, `metadata_service.go`,
+  `notification_service.go`,
   `share_overview_service.go`,
   `space_member_service.go`, `space_update_service.go`,
   `space_lifecycle_service.go`, and
@@ -87,6 +89,10 @@ without starting a subprocess.
 - `internal/httpapi`: send replayable authenticated API requests with bounded
   retries for non-WebDAV protocols, using the shared `internal/retry` policy.
 - `internal/logging`: provide an injected no-op or text diagnostic logger.
+- `internal/notifications`: list and dismiss the authenticated user's unread
+  in-app notifications through the bounded oCIS userlog OCS API. It does not
+  invent a separate read state: dismissing is the server's mark-as-read
+  operation.
 - `internal/output`: render human-readable output and versioned JSON/JSONL
   envelopes through injected writers.
 - `internal/retry`: decide which responses may be retried and how long to wait,
@@ -130,8 +136,9 @@ without starting a subprocess.
   scalar custom-property `PROPFIND`/`PROPPATCH` operations.
 
 Protocol-specific behavior belongs in dedicated `internal/auth`,
-`internal/federation`, `internal/graph`, `internal/search`, `internal/sharing`,
-`internal/trash`, `internal/versions`, and `internal/webdav` adapters. Recursive local/remote
+`internal/federation`, `internal/graph`, `internal/notifications`,
+`internal/search`, `internal/sharing`, `internal/trash`, `internal/versions`,
+and `internal/webdav` adapters. Recursive local/remote
 traversal belongs in `internal/transfer`.
 
 Configuration, credentials, protected upload-session storage, named sync jobs,
@@ -169,6 +176,9 @@ Fast package tests remain Docker-independent.
   resolve only server-returned users of type `Federated` using the exact oCIS
   Graph filter. Federated roles are requested from the server separately from
   local-user roles.
+- Clearing all unread notifications requires explicit intent in both the Cobra
+  and application layers. Dismissal resolves every requested opaque ID against
+  the authenticated user's current unread list before changing server state.
 - Space names and aliases are convenience selectors. Destructive operations
   on disabled Spaces use stable IDs.
 - Server-advertised permissions and roles are authoritative; the CLI does not
