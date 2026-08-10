@@ -14,9 +14,31 @@ import (
 func (client *Client) ListItemPermissions(
 	ctx context.Context, resourceID string,
 ) (Permissions, error) {
+	return client.listItemPermissions(ctx, resourceID, false)
+}
+
+// ListFederatedItemPermissions returns the roles the server allows for an OCM
+// recipient. These can differ from roles advertised for local users.
+func (client *Client) ListFederatedItemPermissions(
+	ctx context.Context, resourceID string,
+) (Permissions, error) {
+	return client.listItemPermissions(ctx, resourceID, true)
+}
+
+func (client *Client) listItemPermissions(
+	ctx context.Context, resourceID string, federated bool,
+) (Permissions, error) {
 	resource, err := itemPermissionsResource(resourceID)
 	if err != nil {
 		return Permissions{}, err
+	}
+	if federated {
+		query := url.Values{}
+		query.Set(
+			"$filter",
+			`@libre.graph.permissions.roles.allowedValues/rolePermissions/any(p:contains(p/condition, '@Subject.UserType=="Federated"'))`,
+		)
+		resource += "?" + query.Encode()
 	}
 	var permissions Permissions
 	if err := client.doJSON(

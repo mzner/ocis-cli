@@ -71,7 +71,7 @@ func runShare(
 		return err
 	}
 	switch request.Operation {
-	case ShareCreate, ShareList, ShareDirectAdd, ShareRoles:
+	case ShareCreate, ShareList, ShareDirectAdd, ShareFederatedAdd, ShareRoles:
 		if err := client.selectSpace(options.Space); err != nil {
 			return err
 		}
@@ -106,6 +106,8 @@ func runShare(
 		return updatePublicLink(ctx, client, request, options)
 	case ShareDirectAdd:
 		return addDirectShare(ctx, client, request, options)
+	case ShareFederatedAdd:
+		return addFederatedShare(ctx, client, request, options)
 	case ShareDirectUpdate:
 		return updateDirectShare(ctx, client, request, options)
 	case ShareRemove:
@@ -117,7 +119,9 @@ func runShare(
 	case ShareAccept, ShareDecline:
 		return respondToReceivedShare(ctx, client, request, options)
 	case ShareRoles:
-		return listShareRoles(ctx, client, request.Path, options)
+		return listShareRoles(
+			ctx, client, request.Path, request.Federated, options,
+		)
 	case ShareRevoke:
 		if err := client.sharingClient().RevokeLink(ctx, request.ID); err != nil {
 			return err
@@ -178,7 +182,7 @@ func addDirectShare(
 		)
 	}
 	_, role, err := resolveDirectRole(
-		ctx, client, metadata.ResourceID, request.Role,
+		ctx, client, metadata.ResourceID, request.Role, false,
 	)
 	if err != nil {
 		return err
@@ -231,6 +235,82 @@ func addDirectShare(
 	)
 }
 
+func addFederatedShare(
+	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+) error {
+	request.Recipient = strings.TrimSpace(request.Recipient)
+	if request.Recipient == "" {
+		return usageShare("federated recipient must not be empty")
+	}
+	capabilities, err := client.sharingClient().Capabilities(ctx)
+	if err != nil {
+		return fmt.Errorf("check federation capabilities: %w", err)
+	}
+	if !capabilities.Sharing.Federation.Outgoing {
+		return apperror.Wrap(
+			apperror.KindConflict, "share federated add",
+			errors.New("outgoing federation is disabled by the server"),
+		)
+	}
+	remote := cleanRemote(request.Path)
+	metadata, err := client.stat(remote)
+	if err != nil {
+		return err
+	}
+	if metadata.ResourceID == "" {
+		return fmt.Errorf(
+			"server did not return a stable resource ID for %s", remote,
+		)
+	}
+	_, role, err := resolveDirectRole(
+		ctx, client, metadata.ResourceID, request.Role, true,
+	)
+	if err != nil {
+		return err
+	}
+	recipient, err := resolveFederatedRecipient(
+		ctx, client, request.Recipient, request.RecipientIsID,
+	)
+	if err != nil {
+		return err
+	}
+	if request.DryRun {
+		return output(
+			options, "share",
+			map[string]any{
+				"operation": "add", "path": remote,
+				"resourceId": metadata.ResourceID,
+				"recipient":  request.Recipient, "recipientId": recipient.ID,
+				"recipientType": "federated", "role": role.DisplayName,
+				"roleId": role.ID, "dryRun": true,
+			},
+			"Would share %s with federated user %s as %s\n",
+			remote, fallback(recipient.DisplayName, recipient.ID), role.DisplayName,
+		)
+	}
+	permission, err := client.graphClient().InviteItem(
+		ctx, metadata.ResourceID,
+		graph.InviteRequest{
+			Recipients: []graph.Recipient{{ObjectID: recipient.ID, Type: "user"}},
+			Roles:      []string{role.ID},
+		},
+	)
+	if err != nil {
+		return err
+	}
+	result := directShareOutput{
+		ID: permission.ID, Path: remote, RecipientType: "federated",
+		RecipientID:   recipient.ID,
+		RecipientName: fallback(recipient.DisplayName, recipient.ID),
+		RoleID:        role.ID, Role: role.DisplayName,
+	}
+	return output(
+		options, "share", result,
+		"Shared %s with federated user %s as %s\nShare ID: %s\n",
+		remote, result.RecipientName, result.Role, result.ID,
+	)
+}
+
 func updateDirectShare(
 	ctx context.Context, client *client, request ShareRequest, options RunOptions,
 ) error {
@@ -240,6 +320,7 @@ func updateDirectShare(
 	}
 	_, role, err := resolveDirectRole(
 		ctx, client, selected.ResourceID, request.Role,
+		selected.Type == "federated",
 	)
 	if err != nil {
 		return err
@@ -471,8 +552,24 @@ func respondToReceivedShare(
 }
 
 func listShareRoles(
-	ctx context.Context, client *client, remote string, options RunOptions,
+	ctx context.Context,
+	client *client,
+	remote string,
+	federated bool,
+	options RunOptions,
 ) error {
+	if federated {
+		capabilities, err := client.sharingClient().Capabilities(ctx)
+		if err != nil {
+			return fmt.Errorf("check federation capabilities: %w", err)
+		}
+		if !capabilities.Sharing.Federation.Outgoing {
+			return apperror.Wrap(
+				apperror.KindConflict, "share federated roles",
+				errors.New("outgoing federation is disabled by the server"),
+			)
+		}
+	}
 	remote = cleanRemote(remote)
 	metadata, err := client.stat(remote)
 	if err != nil {
@@ -483,9 +580,16 @@ func listShareRoles(
 			"server did not return a stable resource ID for %s", remote,
 		)
 	}
-	permissions, err := client.graphClient().ListItemPermissions(
-		ctx, metadata.ResourceID,
-	)
+	var permissions graph.Permissions
+	if federated {
+		permissions, err = client.graphClient().ListFederatedItemPermissions(
+			ctx, metadata.ResourceID,
+		)
+	} else {
+		permissions, err = client.graphClient().ListItemPermissions(
+			ctx, metadata.ResourceID,
+		)
+	}
 	if err != nil {
 		return err
 	}
@@ -520,14 +624,16 @@ func resolveOutgoingShare(
 		if value.ID != shareID {
 			continue
 		}
-		if directOnly && value.Type != "user" && value.Type != "group" {
+		if directOnly && value.Type != "user" && value.Type != "group" &&
+			value.Type != "federated" {
 			return sharing.Share{}, usageShare(fmt.Sprintf(
 				"%s is a %s share; use ocis share link update for public links",
 				shareID, value.Type,
 			))
 		}
 		if !directOnly && value.Type != "user" &&
-			value.Type != "group" && value.Type != "public_link" {
+			value.Type != "group" && value.Type != "federated" &&
+			value.Type != "public_link" {
 			return sharing.Share{}, usageShare(fmt.Sprintf(
 				"share type %q cannot be removed with this command",
 				value.Type,
@@ -548,13 +654,22 @@ func resolveOutgoingShare(
 
 func resolveDirectRole(
 	ctx context.Context, client *client, resourceID string, requested string,
+	federated bool,
 ) (graph.Permissions, graph.RoleDefinition, error) {
 	requested = strings.TrimSpace(requested)
 	if requested == "" {
 		return graph.Permissions{}, graph.RoleDefinition{},
 			usageShare("role must not be empty")
 	}
-	permissions, err := client.graphClient().ListItemPermissions(ctx, resourceID)
+	var permissions graph.Permissions
+	var err error
+	if federated {
+		permissions, err = client.graphClient().ListFederatedItemPermissions(
+			ctx, resourceID,
+		)
+	} else {
+		permissions, err = client.graphClient().ListItemPermissions(ctx, resourceID)
+	}
 	if err != nil {
 		return graph.Permissions{}, graph.RoleDefinition{}, err
 	}

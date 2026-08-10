@@ -13,6 +13,7 @@ import (
 	"github.com/mzner/ocis-cli/internal/auth"
 	appconfig "github.com/mzner/ocis-cli/internal/config"
 	"github.com/mzner/ocis-cli/internal/credentials"
+	"github.com/mzner/ocis-cli/internal/federation"
 	"github.com/mzner/ocis-cli/internal/graph"
 	"github.com/mzner/ocis-cli/internal/httpapi"
 	"github.com/mzner/ocis-cli/internal/logging"
@@ -42,6 +43,7 @@ type client struct {
 	sharing      *sharing.Client
 	recycle      *trash.Client
 	versions     *versions.Client
+	federation   *federation.Client
 	space        *graph.Drive
 	retries      int
 	logger       logging.Logger
@@ -69,6 +71,13 @@ func (client *client) sharingClient() *sharing.Client {
 		client.sharing = sharing.NewClient(client.apiConfig(), client.http)
 	}
 	return client.sharing
+}
+
+func (client *client) federationClient() *federation.Client {
+	if client.federation == nil {
+		client.federation = federation.NewClient(client.apiConfig(), client.http)
+	}
+	return client.federation
 }
 
 func (client *client) searchClient() *search.Client {

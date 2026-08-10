@@ -15,6 +15,7 @@ internal/
   auth/               OIDC protocol implementation
   config/             persisted profile model and atomic storage
   credentials/        OS credential-service adapter
+  federation/         ScienceMesh OCM invitation and connection client
   graph/              LibreGraph Spaces, directory, and permission client
   httpapi/            authenticated retrying HTTP transport
   logging/            opt-in diagnostic logging abstraction
@@ -73,6 +74,9 @@ without starting a subprocess.
   protected resumable-upload locations in separate size-bounded entries in
   macOS Keychain, Linux Secret Service, or Windows Credential Manager;
   no plaintext or legacy-format migration path exists.
+- `internal/federation`: create, list, and accept ScienceMesh invitation tokens
+  and list or remove accepted OCM user connections. It has no profile,
+  persistence, Cobra, or resource-sharing policy of its own.
 - `internal/graph`: discover, create, inspect, update, and control the lifecycle
   and membership of Spaces through LibreGraph; list, inspect, and mutate
   directory identities allowed by the server; manage direct group membership
@@ -126,8 +130,8 @@ without starting a subprocess.
   scalar custom-property `PROPFIND`/`PROPPATCH` operations.
 
 Protocol-specific behavior belongs in dedicated `internal/auth`,
-`internal/graph`, `internal/search`, `internal/sharing`, `internal/trash`,
-`internal/versions`, and `internal/webdav` adapters. Recursive local/remote
+`internal/federation`, `internal/graph`, `internal/search`, `internal/sharing`,
+`internal/trash`, `internal/versions`, and `internal/webdav` adapters. Recursive local/remote
 traversal belongs in `internal/transfer`.
 
 Configuration, credentials, protected upload-session storage, named sync jobs,
@@ -159,6 +163,12 @@ Fast package tests remain Docker-independent.
   LibreGraph drive inventory. It ignores the saved default Space unless an
   explicit `--space` filter is provided and excludes declined invitations by
   default.
+- Federation connection removal requires explicit intent in both the Cobra and
+  application layers. Invitation acceptance is always explicit, provider input
+  is restricted to an HTTP(S) host and optional port, and resource invitations
+  resolve only server-returned users of type `Federated` using the exact oCIS
+  Graph filter. Federated roles are requested from the server separately from
+  local-user roles.
 - Space names and aliases are convenience selectors. Destructive operations
   on disabled Spaces use stable IDs.
 - Server-advertised permissions and roles are authoritative; the CLI does not
@@ -225,7 +235,7 @@ Fast package tests remain Docker-independent.
 - Cancellation propagates through Cobra contexts, application use cases, HTTP
   requests, and transfer workers and maps to exit code 130.
 - New behavior requires tests at its narrowest package boundary.
-- Core application, authentication, Graph, HTTP transport, search, sharing,
-  trash, transfer, versions, and WebDAV packages maintain at least 75%
+- Core application, authentication, federation, Graph, HTTP transport, search,
+  sharing, trash, transfer, versions, and WebDAV packages maintain at least 75%
   statement coverage.
 - Machine-readable output and exit codes are public compatibility contracts.

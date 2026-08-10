@@ -69,9 +69,46 @@ func TestGeneratedHelpIncludesGlobalFlags(t *testing.T) {
 		"cp, copy", "rm, remove", "space", "trash", "version, versions", "share",
 		"search, find", "tag", "favorite", "property", "admin",
 		"sync", "config", "cat", "tree", "du", "batch", "touch",
+		"federation, federated, ocm",
 	} {
 		if !strings.Contains(help, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, help)
+		}
+	}
+}
+
+func TestFederationCommandsAndAliasesAreDiscoverable(t *testing.T) {
+	for _, test := range []struct {
+		command  []string
+		expected []string
+	}{
+		{[]string{"federation"}, []string{"invite, invitation", "connection, connections"}},
+		{[]string{"federation", "invite"}, []string{"create", "list, ls", "accept"}},
+		{[]string{"federation", "connection"}, []string{"list, ls", "remove, rm"}},
+		{[]string{"share", "federated"}, []string{"add", "roles"}},
+	} {
+		root := NewRootCommand()
+		var output bytes.Buffer
+		root.SetOut(&output)
+		root.SetErr(&output)
+		root.SetArgs(append(test.command, "--help"))
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		for _, expected := range test.expected {
+			if !strings.Contains(output.String(), expected) {
+				t.Fatalf("%v help missing %q:\n%s", test.command, expected, output.String())
+			}
+		}
+	}
+	for _, args := range [][]string{
+		{"ocm", "invitation", "ls"},
+		{"federated", "connections", "ls"},
+		{"share", "ocm", "roles", "/report.txt"},
+	} {
+		root := NewRootCommand()
+		if _, _, err := root.Find(args); err != nil {
+			t.Fatalf("%v: %v", args, err)
 		}
 	}
 }

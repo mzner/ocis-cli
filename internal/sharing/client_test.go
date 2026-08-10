@@ -90,7 +90,8 @@ func TestCapabilities(t *testing.T) {
 				"max_chunk_size":10000000,"http_method_override":"true"
 			}},
 			"files_sharing":{"api_enabled":true,"group_sharing":true,
-			"sharing_roles":true,"public":{
+			"sharing_roles":true,
+			"federation":{"outgoing":true,"incoming":true},"public":{
 				"enabled":true,"password":{"enforced":true},
 				"expire_date":{"enabled":true}
 			}},
@@ -112,6 +113,8 @@ func TestCapabilities(t *testing.T) {
 		capabilities.DAV.Reports[0] != "search-files" ||
 		!capabilities.Sharing.GroupEnabled ||
 		!capabilities.Sharing.SharingRoles ||
+		!capabilities.Sharing.Federation.Outgoing ||
+		!capabilities.Sharing.Federation.Incoming ||
 		!capabilities.Sharing.Public.Password.Enforced ||
 		capabilities.Files.TUS.MaxChunkSize != 10000000 ||
 		len(capabilities.Files.TUS.Extensions) != 2 ||

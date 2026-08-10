@@ -53,6 +53,33 @@ func TestSearchDirectory(t *testing.T) {
 	}
 }
 
+func TestSearchFederatedUsersUsesRequiredFilter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, request *http.Request,
+	) {
+		if request.URL.Path != "/graph/v1.0/users" ||
+			request.URL.Query().Get("$search") != `"bob@example.test"` ||
+			request.URL.Query().Get("$filter") != "userType eq 'Federated'" {
+			t.Fatalf("request: %s?%s", request.URL.Path, request.URL.RawQuery)
+		}
+		_, _ = io.WriteString(writer, `{"value":[{
+			"id":"federated-id","displayName":"Bob","userType":"Federated",
+			"identities":[{"issuer":"https://remote.test",
+			"issuerAssignedId":"remote-id"}]
+		}]}`)
+	}))
+	defer server.Close()
+	client := NewClient(httpapi.Config{Server: server.URL}, server.Client())
+	users, err := client.SearchFederatedUsers(
+		context.Background(), "bob@example.test",
+	)
+	if err != nil || len(users) != 1 || users[0].UserType != "Federated" ||
+		len(users[0].Identities) != 1 ||
+		users[0].Identities[0].IssuerAssignedID != "remote-id" {
+		t.Fatalf("users: %#v, %v", users, err)
+	}
+}
+
 func TestAdministrativeDirectoryReads(t *testing.T) {
 	var requests []string
 	server := httptest.NewServer(http.HandlerFunc(func(

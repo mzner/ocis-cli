@@ -161,6 +161,7 @@ const (
 	ShareLinkInfo     ShareOperation = "link-info"
 	ShareLinkUpdate   ShareOperation = "link-update"
 	ShareDirectAdd    ShareOperation = "direct-add"
+	ShareFederatedAdd ShareOperation = "federated-add"
 	ShareDirectUpdate ShareOperation = "direct-update"
 	ShareRemove       ShareOperation = "remove"
 	ShareOverview     ShareOperation = "overview"
@@ -193,6 +194,7 @@ type ShareRequest struct {
 	LinksOnly        bool
 	Confirmed        bool
 	DryRun           bool
+	Federated        bool
 }
 
 // TrashOperation identifies a recycle-bin use case.

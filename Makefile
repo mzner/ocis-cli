@@ -1,4 +1,4 @@
-.PHONY: build check clean coverage fmt install integration integration-down \
+.PHONY: build check clean coverage fmt install uninstall remove integration integration-down \
 	integration-logs integration-test integration-up lint race release-check \
 	release release-smoke release-snapshot secrets test vuln
 
@@ -26,6 +26,11 @@ install: build
 	mkdir -p $(HOME)/.local/bin
 	cp bin/ocis $(HOME)/.local/bin/ocis
 
+uninstall:
+	rm -f $(HOME)/.local/bin/ocis
+
+remove: uninstall
+
 test:
 	go test ./...
 
@@ -38,7 +43,7 @@ check: fmt
 
 coverage:
 	go run ./tools/covercheck -min $(COVERAGE_MIN) \
-		app auth graph httpapi retry search sharing sync trash transfer versions \
+		app auth federation graph httpapi retry search sharing sync trash transfer versions \
 		webdav
 
 fmt:

@@ -75,6 +75,10 @@ type Capabilities struct {
 				Enabled bool `json:"enabled"`
 			} `json:"expireDate"`
 		} `json:"public"`
+		Federation struct {
+			Outgoing bool `json:"outgoing"`
+			Incoming bool `json:"incoming"`
+		} `json:"federation"`
 	} `json:"sharing"`
 	Spaces struct {
 		Enabled  bool   `json:"enabled"`
@@ -276,6 +280,10 @@ func (client *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 						Enabled bool `json:"enabled"`
 					} `json:"expire_date"`
 				} `json:"public"`
+				Federation struct {
+					Outgoing bool `json:"outgoing"`
+					Incoming bool `json:"incoming"`
+				} `json:"federation"`
 			} `json:"files_sharing"`
 			Spaces struct {
 				Enabled  bool   `json:"enabled"`
@@ -318,6 +326,10 @@ func (client *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 		raw.Capabilities.FilesSharing.Public.Password.Enforced
 	result.Sharing.Public.ExpireDate.Enabled =
 		raw.Capabilities.FilesSharing.Public.ExpireDate.Enabled
+	result.Sharing.Federation.Outgoing =
+		raw.Capabilities.FilesSharing.Federation.Outgoing
+	result.Sharing.Federation.Incoming =
+		raw.Capabilities.FilesSharing.Federation.Incoming
 	result.Spaces.Enabled = raw.Capabilities.Spaces.Enabled
 	result.Spaces.Projects = raw.Capabilities.Spaces.Projects
 	result.Spaces.Version = raw.Capabilities.Spaces.Version
