@@ -65,6 +65,30 @@ func resolveRecipient(
 	return selectRecipient(candidates, identifier, recipientType, usage)
 }
 
+func resolveFederatedRecipient(
+	ctx context.Context,
+	client *client,
+	identifier string,
+	isID bool,
+) (spaceRecipient, error) {
+	if isID {
+		return spaceRecipient{ID: identifier, DisplayName: identifier}, nil
+	}
+	users, err := client.graphClient().SearchFederatedUsers(ctx, identifier)
+	if err != nil {
+		return spaceRecipient{}, err
+	}
+	candidates := make([]spaceRecipient, 0, len(users))
+	for _, user := range users {
+		if strings.EqualFold(user.UserType, "Federated") {
+			candidates = append(candidates, recipientFromUser(user))
+		}
+	}
+	return selectRecipient(
+		candidates, identifier, "federated user", usageShare,
+	)
+}
+
 func recipientFromUser(user graph.DirectoryUser) spaceRecipient {
 	return spaceRecipient{
 		ID: user.ID, DisplayName: user.DisplayName,

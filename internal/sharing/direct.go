@@ -40,14 +40,17 @@ type ShareListRequest struct {
 	AllStates bool
 }
 
-// ListShares returns outgoing user, group, and public-link shares or received
-// user and group shares.
+// ListShares returns outgoing user, group, federated, and public-link shares or
+// received user, group, and federated shares.
 func (client *Client) ListShares(
 	ctx context.Context, request ShareListRequest,
 ) ([]Share, error) {
 	query := url.Values{"format": {"json"}}
 	if request.Received {
 		query.Set("shared_with_me", "true")
+		// Current oCIS appends enabled OCM shares independently of the legacy
+		// user/group filter. Keeping 0,1 preserves compatibility with older OCS
+		// handlers while share type 6 is decoded below when returned.
 		query.Set("share_types", "0,1")
 		if request.AllStates {
 			query.Set("state", "all")
@@ -189,6 +192,8 @@ func shareTypeName(value string) string {
 		return "group"
 	case "3", "public_link":
 		return "public_link"
+	case "6", "federated":
+		return "federated"
 	default:
 		return value
 	}

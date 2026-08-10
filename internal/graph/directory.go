@@ -11,16 +11,23 @@ import (
 
 // DirectoryUser is the non-sensitive identity data returned by user search.
 type DirectoryUser struct {
-	ID                string   `json:"id,omitempty"`
-	DisplayName       string   `json:"displayName,omitempty"`
-	Username          string   `json:"onPremisesSamAccountName,omitempty"`
-	Mail              string   `json:"mail,omitempty"`
-	UserType          string   `json:"userType,omitempty"`
-	AccountEnabled    *bool    `json:"accountEnabled,omitempty"`
-	GivenName         string   `json:"givenName,omitempty"`
-	Surname           string   `json:"surname,omitempty"`
-	PreferredLanguage string   `json:"preferredLanguage,omitempty"`
-	Attributes        []string `json:"attributes,omitempty"`
+	ID                string           `json:"id,omitempty"`
+	DisplayName       string           `json:"displayName,omitempty"`
+	Username          string           `json:"onPremisesSamAccountName,omitempty"`
+	Mail              string           `json:"mail,omitempty"`
+	UserType          string           `json:"userType,omitempty"`
+	AccountEnabled    *bool            `json:"accountEnabled,omitempty"`
+	GivenName         string           `json:"givenName,omitempty"`
+	Surname           string           `json:"surname,omitempty"`
+	PreferredLanguage string           `json:"preferredLanguage,omitempty"`
+	Attributes        []string         `json:"attributes,omitempty"`
+	Identities        []ObjectIdentity `json:"identities,omitempty"`
+}
+
+// ObjectIdentity identifies a user at an identity provider.
+type ObjectIdentity struct {
+	Issuer           string `json:"issuer,omitempty"`
+	IssuerAssignedID string `json:"issuerAssignedId,omitempty"`
 }
 
 // DirectoryGroup is the non-sensitive identity data returned by group search.
@@ -151,6 +158,27 @@ func (client *Client) SearchUsers(
 	if err := client.doJSON(
 		ctx, http.MethodGet, searchResource("/graph/v1.0/users", search),
 		nil, nil, &result, "search users",
+	); err != nil {
+		return nil, err
+	}
+	return result.Value, nil
+}
+
+// SearchFederatedUsers searches only previously accepted OCM connections.
+// Current oCIS deliberately omits federated users unless this exact userType
+// filter is present.
+func (client *Client) SearchFederatedUsers(
+	ctx context.Context, search string,
+) ([]DirectoryUser, error) {
+	var result struct {
+		Value []DirectoryUser `json:"value"`
+	}
+	query := url.Values{}
+	query.Set("$search", search)
+	query.Set("$filter", "userType eq 'Federated'")
+	if err := client.doJSON(
+		ctx, http.MethodGet, "/graph/v1.0/users?"+query.Encode(),
+		nil, nil, &result, "search federated users",
 	); err != nil {
 		return nil, err
 	}

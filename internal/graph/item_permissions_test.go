@@ -98,6 +98,31 @@ func TestItemPermissionLifecycle(t *testing.T) {
 	}
 }
 
+func TestListFederatedItemPermissionsUsesRoleFilter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(
+		writer http.ResponseWriter, request *http.Request,
+	) {
+		want := `@libre.graph.permissions.roles.allowedValues/rolePermissions/any(p:contains(p/condition, '@Subject.UserType=="Federated"'))`
+		if request.URL.Query().Get("$filter") != want {
+			t.Fatalf("filter: %q", request.URL.Query().Get("$filter"))
+		}
+		_, _ = io.WriteString(writer, `{
+			"@libre.graph.permissions.roles.allowedValues":[{
+				"id":"viewer-id","displayName":"Can view"
+			}],"value":[]
+		}`)
+	}))
+	defer server.Close()
+	client := NewClient(httpapi.Config{Server: server.URL}, server.Client())
+	permissions, err := client.ListFederatedItemPermissions(
+		context.Background(), "storage$space!file",
+	)
+	if err != nil || len(permissions.AllowedRoles) != 1 ||
+		permissions.AllowedRoles[0].ID != "viewer-id" {
+		t.Fatalf("permissions: %#v, %v", permissions, err)
+	}
+}
+
 func TestPublicLinkPermissionLifecycle(t *testing.T) {
 	var patched, passwordSet bool
 	server := httptest.NewServer(http.HandlerFunc(func(

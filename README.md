@@ -70,6 +70,7 @@ Requires Go 1.26.5 or newer:
 make test
 make build
 make install
+make uninstall # alias: make remove
 ```
 
 The slower black-box compatibility suite starts a disposable, pinned full oCIS
@@ -1032,9 +1033,9 @@ ocis share remove SHARE_ID
 ```
 
 Removal prompts for confirmation and accepts `--yes` only for reviewed
-automation. `share list` includes user, group, and public-link shares created
-by the caller. `share received [REMOTE_PATH]` lists incoming user/group shares
-and is not filtered by `--space`. Filter it with `--state accepted`,
+automation. `share list` includes user, group, federated, and public-link shares
+created by the caller. `share received [REMOTE_PATH]` lists incoming user,
+group, and federated shares and is not filtered by `--space`. Filter it with `--state accepted`,
 `--state pending`, `--state declined`, or `--state all`. Human output names the
 state; JSON and JSONL include both the numeric OCS `state` and readable
 `stateName`.
@@ -1127,6 +1128,77 @@ never stored in the config or OS credential service and is not accepted as a
 command-line value. `--dry-run` is available for creation, update, and
 revocation. Dry-run output reports that a password would be set but never reads
 or prints the secret.
+
+### Federated Open Cloud Mesh sharing
+
+Federated sharing connects users on two different OCM-enabled oCIS servers.
+It has two explicit stages: establish a connection once, then share resources
+with that accepted remote user. The CLI never accepts an invitation or a
+resource share automatically.
+
+On the invitation issuer's server, create an invitation:
+
+```sh
+ocis --profile work federation invite create \
+  --email bob@remote.example \
+  --description "Share project documents"
+ocis --profile work federation invite list
+```
+
+Send the returned token to the other user through a trusted channel. On the
+recipient's server, accept it while naming the issuer's public host. A full
+`http` or `https` URL is also accepted; paths, queries, credentials, and other
+URL schemes are rejected:
+
+```sh
+ocis --profile remote federation invite accept INVITATION_TOKEN \
+  --provider cloud.example.com
+```
+
+To avoid placing the invitation token in shell history, omit the positional
+token and enter it at the secure prompt, or set
+`OCIS_FEDERATION_INVITE_TOKEN` for non-interactive execution:
+
+```sh
+ocis --profile remote federation invite accept \
+  --provider cloud.example.com
+```
+
+After acceptance, both users can discover the connection and share files or
+folders using the server-advertised federated roles:
+
+```sh
+ocis federation connection list
+ocis --space Engineering share federated roles /reports/report.pdf
+ocis --space Engineering share federated add \
+  /reports/report.pdf bob@remote.example --role viewer --dry-run
+ocis --space Engineering share federated add \
+  /reports/report.pdf bob@remote.example --role viewer
+```
+
+Incoming OCM resource shares appear in the existing intentional workflow:
+
+```sh
+ocis share received --state pending
+ocis share accept SHARE_ID --dry-run
+ocis share accept SHARE_ID
+```
+
+Remove a federated connection only after reviewing it. Removal can make
+resources shared through that connection unavailable:
+
+```sh
+ocis federation connection remove bob@remote.example --dry-run
+ocis federation connection remove bob@remote.example
+```
+
+Both servers must enable incoming and outgoing OCM support. The CLI reads the
+server's federation capabilities and returns a conflict error before mutation
+when the required direction is disabled. Invitations establish a connection;
+they do not themselves grant access to any file or Space. Federated users
+cannot be added as project Space members in current oCIS, so share a file or
+folder inside the Space instead.
+
 The server remains authoritative for directory visibility, available roles,
 sharing restrictions, and resource permissions. A user may be able to read a
 file without being allowed to share it, update a share, or remove another

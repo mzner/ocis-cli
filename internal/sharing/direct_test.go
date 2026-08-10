@@ -110,3 +110,9 @@ func TestShareStateName(t *testing.T) {
 		}
 	}
 }
+
+func TestFederatedShareTypeName(t *testing.T) {
+	if got := shareTypeName("6"); got != "federated" {
+		t.Fatalf("type: got %q, want federated", got)
+	}
+}

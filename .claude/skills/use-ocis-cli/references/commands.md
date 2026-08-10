@@ -18,6 +18,7 @@ same command.
 - Synchronization
 - Spaces
 - Sharing
+- Federation
 - Metadata, trash, and versions
 - Administration
 - CLI utilities and global flags
@@ -91,6 +92,7 @@ to change their saved default.
 | `share roles` | List server-advertised sharing roles for a resource. |
 | `share user add` | Grant a user access to a remote resource. |
 | `share group add` | Grant a group access to a remote resource. |
+| `share federated add/roles` | Grant an accepted OCM user access using a server-advertised federated role. |
 | `share list, share ls` | List outgoing shares for a resource. |
 | `share overview` | List outgoing and received shares across Spaces. |
 | `share received` | List shares received by the current user. |
@@ -102,6 +104,17 @@ to change their saved default.
 | `share revoke` | Revoke a public link. |
 
 Never accept a received share without an explicit user request.
+
+## Federation
+
+| Command | Purpose |
+| --- | --- |
+| `federation invite create/list/accept` | Establish an OCM connection between users on two federation-enabled servers. |
+| `federation connection list/remove` | Inspect or remove accepted remote-user connections. |
+
+An invitation token establishes identity trust; it does not share a resource.
+Treat invitation tokens as secrets and never accept one without an explicit
+user request.
 
 ## Metadata, trash, and versions
 

@@ -43,8 +43,9 @@ protocol-level work.
 - Prefer the global `--json` or `--jsonl` output when consuming results. Do not
   parse human-readable tables when structured output is available.
 - Use read-only discovery commands such as `ls`, `stat`, `search`, `tree`,
-  `space list`, `share overview`, `trash list`, and admin `list` or `info`
-  commands to resolve names and IDs before changing anything.
+  `space list`, `share overview`, `federation connection list`, `trash list`,
+  and admin `list` or `info` commands to resolve names and IDs before changing
+  anything.
 - Interpret a remote path in the selected Space. Keep local filesystem paths and
   remote oCIS paths distinct according to the command help.
 
@@ -55,6 +56,9 @@ protocol-level work.
   should be reconciled. Run a sync with `--dry-run` first.
 - Use `share received` or `share overview` to inspect shares. Never accept a
   share automatically.
+- Use `federation invite` and `federation connection` to establish and inspect
+  OCM identity connections. An invitation establishes a connection; sharing a
+  file or folder is a separate explicit operation.
 - Use `trash` for recoverable deletion management and `version` for historical
   file versions.
 - Use `admin` only when the user explicitly requests administration. A normal
@@ -77,14 +81,16 @@ shares, disables, or deletes data:
 Never add `--yes` merely to avoid a prompt. Use it only when the user has
 explicitly authorized that exact operation. Do not silently overwrite files,
 empty trash, permanently delete resources, disable or delete accounts, change
-roles, accept or decline shares, or execute unreviewed batch input.
+roles, accept federation invitations, remove federation connections, accept or
+decline shares, or execute unreviewed batch input.
 
 ## Protect authentication and secrets
 
 - Let `ocis auth login PROFILE` handle interactive browser login and server-
   required MFA. Tell the user when browser interaction is required.
 - Never ask the user to paste a password, access token, refresh token, client
-  secret, keyring record, or TUS resume URL into the conversation.
+  secret, keyring record, federation invitation token, or TUS resume URL into
+  the conversation.
 - Never inspect, print, export, or copy operating-system keyring contents.
 - Never expose credential-bearing environment variables, authorization headers,
   local secret storage, or complete diagnostic output that may contain secrets.

@@ -10,7 +10,7 @@ import (
 
 func newShareCommand(options *globalOptions) *cobra.Command {
 	command := &cobra.Command{
-		Use: "share", Short: "Manage direct shares and public links",
+		Use: "share", Short: "Manage direct, federated, and public-link shares",
 	}
 	command.AddCommand(
 		newShareCreateCommand(options),
@@ -18,6 +18,7 @@ func newShareCommand(options *globalOptions) *cobra.Command {
 		newShareRevokeCommand(options),
 		newShareRecipientCommand(options, "user"),
 		newShareRecipientCommand(options, "group"),
+		newShareFederatedCommand(options),
 		newShareRolesCommand(options),
 		newShareUpdateCommand(options),
 		newShareRemoveCommand(options),
@@ -28,6 +29,62 @@ func newShareCommand(options *globalOptions) *cobra.Command {
 		newShareLinkCommand(options),
 	)
 	return command
+}
+
+func newShareFederatedCommand(options *globalOptions) *cobra.Command {
+	command := &cobra.Command{
+		Use: "federated", Aliases: []string{"ocm"},
+		Short: "Share with an accepted federated user",
+	}
+	command.AddCommand(
+		newShareFederatedAddCommand(options),
+		newShareFederatedRolesCommand(options),
+	)
+	return command
+}
+
+func newShareFederatedAddCommand(options *globalOptions) *cobra.Command {
+	var role string
+	var recipientIsID, dryRun bool
+	command := &cobra.Command{
+		Use:   "add REMOTE_PATH RECIPIENT",
+		Short: "Grant an accepted federated user access to a remote resource",
+		Args:  exactArgs(2),
+		RunE: func(command *cobra.Command, args []string) error {
+			return runShare(command, options, app.ShareRequest{
+				Operation: app.ShareFederatedAdd, Path: args[0],
+				Recipient: args[1], RecipientType: "federated",
+				RecipientIsID: recipientIsID, Role: role,
+				Federated: true, DryRun: dryRun,
+			})
+		},
+	}
+	command.Flags().StringVar(
+		&role, "role", "viewer",
+		"server-advertised federated role name, ID, or unambiguous alias",
+	)
+	command.Flags().BoolVar(
+		&recipientIsID, "recipient-id", false,
+		"treat RECIPIENT as an opaque federated Graph ID",
+	)
+	command.Flags().BoolVar(
+		&dryRun, "dry-run", false,
+		"resolve the resource, recipient, and role without sharing",
+	)
+	return command
+}
+
+func newShareFederatedRolesCommand(options *globalOptions) *cobra.Command {
+	return &cobra.Command{
+		Use:   "roles REMOTE_PATH",
+		Short: "List server-advertised roles for federated sharing",
+		Args:  exactArgs(1),
+		RunE: func(command *cobra.Command, args []string) error {
+			return runShare(command, options, app.ShareRequest{
+				Operation: app.ShareRoles, Path: args[0], Federated: true,
+			})
+		},
+	}
 }
 
 func newShareOverviewCommand(options *globalOptions) *cobra.Command {
