@@ -173,8 +173,16 @@ func (client *Client) SearchFederatedUsers(
 	var result struct {
 		Value []DirectoryUser `json:"value"`
 	}
+	expression, err := directorySearchExpression(DirectorySearch{
+		Value: search, Mode: DirectorySearchLiteral,
+	})
+	if err != nil {
+		return nil, err
+	}
 	query := url.Values{}
-	query.Set("$search", search)
+	if expression != "" {
+		query.Set("$search", expression)
+	}
 	query.Set("$filter", "userType eq 'Federated'")
 	if err := client.doJSON(
 		ctx, http.MethodGet, "/graph/v1.0/users?"+query.Encode(),

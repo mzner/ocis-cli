@@ -58,7 +58,7 @@ func TestSearchFederatedUsersUsesRequiredFilter(t *testing.T) {
 		writer http.ResponseWriter, request *http.Request,
 	) {
 		if request.URL.Path != "/graph/v1.0/users" ||
-			request.URL.Query().Get("$search") != "bob@example.test" ||
+			request.URL.Query().Get("$search") != `"bob@example.test"` ||
 			request.URL.Query().Get("$filter") != "userType eq 'Federated'" {
 			t.Fatalf("request: %s?%s", request.URL.Path, request.URL.RawQuery)
 		}
