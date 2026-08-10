@@ -19,6 +19,7 @@ same command.
 - Spaces
 - Sharing
 - Federation
+- Notifications
 - Metadata, trash, and versions
 - Administration
 - CLI utilities and global flags
@@ -115,6 +116,19 @@ Never accept a received share without an explicit user request.
 An invitation token establishes identity trust; it does not share a resource.
 Treat invitation tokens as secrets and never accept one without an explicit
 user request.
+
+## Notifications
+
+| Command | Purpose |
+| --- | --- |
+| `notification list, notification ls` | List unread in-app notifications; optionally filter them with a search argument. |
+| `notification info` | Inspect one unread notification by its opaque ID. |
+| `notification dismiss, notification read` | Remove one or more notifications from the unread list. |
+| `notification clear, notification read-all` | Remove every notification from the unread list after confirmation. |
+
+In oCIS, dismissing is the server's mark-as-read operation. It does not delete
+the resource mentioned by the notification. Preview dismissal or clearing with
+`--dry-run`; never clear all notifications without an explicit user request.
 
 ## Metadata, trash, and versions
 

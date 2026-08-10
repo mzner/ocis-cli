@@ -70,9 +70,39 @@ func TestGeneratedHelpIncludesGlobalFlags(t *testing.T) {
 		"search, find", "tag", "favorite", "property", "admin",
 		"sync", "config", "cat", "tree", "du", "batch", "touch",
 		"federation, federated, ocm",
+		"notification, notifications",
 	} {
 		if !strings.Contains(help, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, help)
+		}
+	}
+}
+
+func TestNotificationCommandsAndAliasesAreDiscoverable(t *testing.T) {
+	root := NewRootCommand()
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"notification", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		"list, ls", "info", "dismiss, read, remove, rm, delete",
+		"clear, read-all",
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("notification help missing %q:\n%s", expected, output.String())
+		}
+	}
+	for _, args := range [][]string{
+		{"notifications", "ls"},
+		{"notification", "read", "notification-1"},
+		{"notification", "read-all"},
+	} {
+		root = NewRootCommand()
+		if _, _, err := root.Find(args); err != nil {
+			t.Fatalf("%v: %v", args, err)
 		}
 	}
 }

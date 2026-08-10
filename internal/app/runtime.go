@@ -17,6 +17,7 @@ import (
 	"github.com/mzner/ocis-cli/internal/graph"
 	"github.com/mzner/ocis-cli/internal/httpapi"
 	"github.com/mzner/ocis-cli/internal/logging"
+	"github.com/mzner/ocis-cli/internal/notifications"
 	appoutput "github.com/mzner/ocis-cli/internal/output"
 	"github.com/mzner/ocis-cli/internal/search"
 	"github.com/mzner/ocis-cli/internal/sharing"
@@ -32,22 +33,23 @@ type profile = appconfig.Profile
 type item = webdav.Item
 
 type client struct {
-	name         string
-	profile      profile
-	http         *http.Client
-	store        *store
-	ctx          context.Context
-	dav          *webdav.Client
-	graph        *graph.Client
-	search       *search.Client
-	sharing      *sharing.Client
-	recycle      *trash.Client
-	versions     *versions.Client
-	federation   *federation.Client
-	space        *graph.Drive
-	retries      int
-	logger       logging.Logger
-	dependencies Dependencies
+	name          string
+	profile       profile
+	http          *http.Client
+	store         *store
+	ctx           context.Context
+	dav           *webdav.Client
+	graph         *graph.Client
+	search        *search.Client
+	sharing       *sharing.Client
+	recycle       *trash.Client
+	versions      *versions.Client
+	federation    *federation.Client
+	notifications *notifications.Client
+	space         *graph.Drive
+	retries       int
+	logger        logging.Logger
+	dependencies  Dependencies
 }
 
 func (client *client) apiConfig() httpapi.Config {
@@ -78,6 +80,13 @@ func (client *client) federationClient() *federation.Client {
 		client.federation = federation.NewClient(client.apiConfig(), client.http)
 	}
 	return client.federation
+}
+
+func (client *client) notificationsClient() *notifications.Client {
+	if client.notifications == nil {
+		client.notifications = notifications.NewClient(client.apiConfig(), client.http)
+	}
+	return client.notifications
 }
 
 func (client *client) searchClient() *search.Client {
