@@ -19,6 +19,7 @@ same command.
 - Spaces
 - Sharing
 - Federation
+- Activity history
 - Notifications
 - Metadata, trash, and versions
 - Administration
@@ -116,6 +117,17 @@ Never accept a received share without an explicit user request.
 An invitation token establishes identity trust; it does not share a resource.
 Treat invitation tokens as secrets and never accept one without an explicit
 user request.
+
+## Activity history
+
+| Command | Purpose |
+| --- | --- |
+| `activity list, activity ls` | List account-wide or resource-scoped activity history with server-enforced permissions. |
+
+With no path or explicit `--space`, `activity list` is account-wide. Pass a
+remote path to use the current file root, or pass `--space SPACE` to scope the
+query to that Space. Use `--depth`, `--limit`, and `--sort` for server-side
+filtering. Activity history is read-only.
 
 ## Notifications
 

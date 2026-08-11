@@ -43,7 +43,7 @@ check: fmt
 
 coverage:
 	go run ./tools/covercheck -min $(COVERAGE_MIN) \
-		app auth federation graph httpapi notifications retry search sharing sync trash transfer versions \
+		activities app auth federation graph httpapi notifications retry search sharing sync trash transfer versions \
 		webdav
 
 fmt:

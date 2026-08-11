@@ -71,9 +71,44 @@ func TestGeneratedHelpIncludesGlobalFlags(t *testing.T) {
 		"sync", "config", "cat", "tree", "du", "batch", "touch",
 		"federation, federated, ocm",
 		"notification, notifications",
+		"activity, activities",
 	} {
 		if !strings.Contains(help, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, help)
+		}
+	}
+}
+
+func TestActivityCommandsAndAliasesAreDiscoverable(t *testing.T) {
+	root := NewRootCommand()
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"activity", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "list, ls") {
+		t.Fatalf("activity help:\n%s", output.String())
+	}
+
+	output.Reset()
+	root = NewRootCommand()
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"activity", "list", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"--depth", "--limit", "--sort"} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("activity list help missing %q:\n%s", expected, output.String())
+		}
+	}
+	for _, args := range [][]string{{"activities", "ls"}, {"activity", "list"}} {
+		root = NewRootCommand()
+		if _, _, err := root.Find(args); err != nil {
+			t.Fatalf("%v: %v", args, err)
 		}
 	}
 }
