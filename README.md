@@ -1204,6 +1204,44 @@ sharing restrictions, and resource permissions. A user may be able to read a
 file without being allowed to share it, update a share, or remove another
 user's permission.
 
+## Activity history
+
+Inspect changes recorded by the oCIS activity service. With no path or explicit
+`--space`, the command returns account-wide activity visible to the current
+user:
+
+```sh
+ocis activity list
+ocis activity list --limit 50 --sort desc
+ocis --json activity list
+```
+
+Pass a remote path to scope the history to a file or folder. Path resolution
+uses the profile's saved default Space, or the personal file root when no Space
+is selected. An explicit `--space` without a path scopes the query to that
+Space's root:
+
+```sh
+ocis activity list /reports/report.pdf
+ocis activity list /projects --depth 1
+ocis --space Engineering activity list
+ocis --space Engineering activity list /reports --depth -1
+```
+
+`--depth 0` selects only the resolved resource, positive values include that
+many descendant levels, and `--depth -1` includes the complete recorded
+subtree. The default limit is 100; `--limit -1` requests all history retained
+by the server. Sorting accepts `asc` or `desc` and defaults to newest first.
+
+Human output substitutes the structured activity variables into the server's
+localized message. JSON and JSONL preserve the activity ID, recorded time,
+message template, and complete variables for automation.
+
+Activity history is read-only. The server requires the authenticated user to
+have permission to list grants on the selected resource, so access can differ
+between users and Spaces. The CLI reports that authorization decision instead
+of assuming that every authenticated user can inspect every activity.
+
 ## Notifications
 
 List and inspect the authenticated user's unread in-app notifications:

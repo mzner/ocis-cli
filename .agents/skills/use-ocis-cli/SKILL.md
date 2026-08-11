@@ -1,6 +1,6 @@
 ---
 name: use-ocis-cli
-description: Safely operate oCIS servers through the installed ocis command-line client. Use when an AI agent is asked to inspect, list, search, transfer, synchronize, share, restore, manage notifications, or administer files, Spaces, shares, users, or groups in oCIS. Do not use for developing the ocis-cli source code.
+description: Safely operate oCIS servers through the installed ocis command-line client. Use when an AI agent is asked to inspect, list, search, transfer, synchronize, share, restore, inspect activity history, manage notifications, or administer files, Spaces, shares, users, or groups in oCIS. Do not use for developing the ocis-cli source code.
 ---
 
 # Use oCIS CLI
@@ -44,8 +44,8 @@ protocol-level work.
   parse human-readable tables when structured output is available.
 - Use read-only discovery commands such as `ls`, `stat`, `search`, `tree`,
   `space list`, `share overview`, `federation connection list`, `trash list`,
-  `notification list`, and admin `list` or `info` commands to resolve names and
-  IDs before changing anything.
+  `activity list`, `notification list`, and admin `list` or `info` commands to
+  resolve names and IDs before changing anything.
 - Interpret a remote path in the selected Space. Keep local filesystem paths and
   remote oCIS paths distinct according to the command help.
 
@@ -61,6 +61,9 @@ protocol-level work.
   file or folder is a separate explicit operation.
 - Use `trash` for recoverable deletion management and `version` for historical
   file versions.
+- Use `activity list` for read-only account-wide or resource-scoped history.
+  Pass a remote path or `--space` when the requested scope is narrower than the
+  account.
 - Use `notification list` and `notification info` to inspect unread events.
   In oCIS, `notification dismiss` is the server's mark-as-read operation; it
   does not delete the resource referenced by the notification.

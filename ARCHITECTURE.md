@@ -9,6 +9,7 @@ The repository follows the standard Go command layout:
 cmd/
   ocis/               executable entrypoint only
 internal/
+  activities/         authenticated oCIS Graph activity-history client
   command/            Cobra command tree and input validation
   app/                application use-case orchestration
   apperror/           stable error categories and exit-code mapping
@@ -58,7 +59,7 @@ without starting a subprocess.
   `batch_service.go`, `filesystem_service.go`, `filesystem_tree_service.go`,
   `filesystem_du_service.go`, `filesystem_touch_service.go`,
   `filesystem_walk.go`, `metadata_service.go`,
-  `notification_service.go`,
+  `activity_service.go`, `notification_service.go`,
   `share_overview_service.go`,
   `space_member_service.go`, `space_update_service.go`,
   `space_lifecycle_service.go`, and
@@ -67,6 +68,9 @@ without starting a subprocess.
   contains shared application wiring.
 - `internal/apperror`: classify usage, authentication, not-found, and conflict
   errors without coupling application services to Cobra.
+- `internal/activities`: query account-wide or resource-scoped activity
+  history through the bounded oCIS Graph extension, preserving the localized
+  message template and structured variables returned by the server.
 - `internal/auth`: implement OIDC discovery, dynamic native-client
   registration, token exchange, refresh, and userinfo.
 - `internal/config`: validate server URLs, requiring `https` unless the caller
@@ -135,7 +139,7 @@ without starting a subprocess.
   authentication headers, metadata and checksum response mapping, and safe
   scalar custom-property `PROPFIND`/`PROPPATCH` operations.
 
-Protocol-specific behavior belongs in dedicated `internal/auth`,
+Protocol-specific behavior belongs in dedicated `internal/activities`, `internal/auth`,
 `internal/federation`, `internal/graph`, `internal/notifications`,
 `internal/search`, `internal/sharing`, `internal/trash`, `internal/versions`,
 and `internal/webdav` adapters. Recursive local/remote

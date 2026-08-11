@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/mzner/ocis-cli/internal/activities"
 	"github.com/mzner/ocis-cli/internal/apperror"
 	"github.com/mzner/ocis-cli/internal/auth"
 	appconfig "github.com/mzner/ocis-cli/internal/config"
@@ -38,6 +39,7 @@ type client struct {
 	http          *http.Client
 	store         *store
 	ctx           context.Context
+	activities    *activities.Client
 	dav           *webdav.Client
 	graph         *graph.Client
 	search        *search.Client
@@ -50,6 +52,13 @@ type client struct {
 	retries       int
 	logger        logging.Logger
 	dependencies  Dependencies
+}
+
+func (client *client) activitiesClient() *activities.Client {
+	if client.activities == nil {
+		client.activities = activities.NewClient(client.apiConfig(), client.http)
+	}
+	return client.activities
 }
 
 func (client *client) apiConfig() httpapi.Config {

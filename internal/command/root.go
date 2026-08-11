@@ -128,6 +128,7 @@ func NewRootCommand() *cobra.Command {
 		newShareCommand(options),
 		newFederationCommand(options),
 		newNotificationCommand(options),
+		newActivityCommand(options),
 		newSearchCommand(options),
 		newSyncCommand(options),
 		newTagCommand(options),
