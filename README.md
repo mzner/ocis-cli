@@ -170,7 +170,8 @@ The current profile is marked with `*` in `server list`.
 
 Run `ocis doctor [PROFILE]` to validate the config schema, operating-system
 credential service, authentication, advertised WebDAV capabilities, Spaces,
-public-link support, and resumable-upload support.
+public-link support, resumable uploads, archive downloads, and real-time event
+support.
 
 ## Spaces
 
@@ -652,6 +653,36 @@ directory. For example, `ocis download /demo ./ --recursive` creates
 `./demo`. Passing an existing `./demo` directory reuses it and does not create
 `./demo/demo`. A destination that does not exist is created as the downloaded
 directory itself.
+
+## Archive downloads
+
+Ask the oCIS server to package one or more files and directories into a single
+ZIP or TAR download:
+
+```sh
+ocis archive formats
+ocis archive download /Documents /Photos/trip.jpg --output backup.zip
+ocis archive download /Documents --output backup.tar --format tar
+ocis archive download /Documents --output backup.zip --dry-run
+```
+
+The command is different from `download --recursive`: oCIS creates one archive
+on the server and the CLI downloads that one stream. `archive formats` shows
+the formats and source limits advertised by the selected server. The output
+format is inferred from `.tar`; otherwise it defaults to ZIP. A conflicting
+`.zip` or `.tar` extension is rejected.
+
+Before downloading, the CLI resolves every selected resource, walks selected
+directories, and checks the advertised entry-count and logical-size limits.
+Nested or duplicate selections are rejected so resources are not archived
+twice. `--dry-run` performs that complete preflight without requesting an
+archive or creating a local file. The server remains authoritative for access
+permissions, including within a selected Space.
+
+Archive downloads use the same authenticated profile as other commands. The
+CLI refuses a cross-origin archive endpoint advertised by a server, validates
+the complete ZIP or TAR stream, and atomically installs the result. Existing
+destinations are protected unless `--overwrite` is explicitly supplied.
 
 ## One-way synchronization
 

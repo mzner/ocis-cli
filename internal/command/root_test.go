@@ -74,10 +74,59 @@ func TestGeneratedHelpIncludesGlobalFlags(t *testing.T) {
 		"notification, notifications",
 		"activity, activities",
 		"event, events",
+		"archive, archives",
 	} {
 		if !strings.Contains(help, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, help)
 		}
+	}
+}
+
+func TestArchiveCommandsAreDiscoverable(t *testing.T) {
+	root := NewRootCommand()
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"archive", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"download", "formats"} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("archive help missing %q:\n%s", expected, output.String())
+		}
+	}
+
+	output.Reset()
+	root = NewRootCommand()
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"archive", "download", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{
+		"--output", "--format", "--overwrite", "--dry-run",
+	} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("archive download help missing %q:\n%s", expected, output.String())
+		}
+	}
+	command, _, err := root.Find([]string{"archive", "download"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete, found := command.GetFlagCompletionFunc("format")
+	if !found {
+		t.Fatal("--format completion is not registered")
+	}
+	values, directive := complete(command, nil, "")
+	if directive != cobra.ShellCompDirectiveNoFileComp ||
+		!strings.Contains(strings.Join(values, "\n"), "zip\tZIP archive") {
+		t.Fatalf("completion values=%v directive=%v", values, directive)
+	}
+	if _, _, err := root.Find([]string{"archives", "formats"}); err != nil {
+		t.Fatal(err)
 	}
 }
 

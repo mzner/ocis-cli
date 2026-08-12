@@ -85,7 +85,11 @@ func TestCapabilities(t *testing.T) {
 		writeOCS(writer, `{"capabilities":{
 			"core":{"support-sse":true},
 			"dav":{"reports":["search-files"]},
-			"files":{"tus_support":{
+			"files":{"archivers":[{
+				"enabled":true,"version":"2.0.0","formats":["zip","tar"],
+				"archiver_url":"/archiver","max_num_files":"42",
+				"max_size":"1073741824"
+			}],"tus_support":{
 				"version":"1.0.0","resumable":"1.0.0",
 				"extension":"creation,creation-with-upload",
 				"max_chunk_size":10000000,"http_method_override":"true"
@@ -121,6 +125,10 @@ func TestCapabilities(t *testing.T) {
 		capabilities.Files.TUS.MaxChunkSize != 10000000 ||
 		len(capabilities.Files.TUS.Extensions) != 2 ||
 		!capabilities.Files.TUS.HTTPMethodOverride ||
+		len(capabilities.Files.Archivers) != 1 ||
+		capabilities.Files.Archivers[0].URL != "/archiver" ||
+		capabilities.Files.Archivers[0].MaxNumFiles != 42 ||
+		capabilities.Files.Archivers[0].MaxSize != 1073741824 ||
 		!capabilities.Spaces.Projects ||
 		!capabilities.Auth.MFA.Enabled ||
 		len(capabilities.Auth.MFA.LevelNames) != 1 ||
