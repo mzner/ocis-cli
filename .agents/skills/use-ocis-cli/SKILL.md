@@ -64,6 +64,10 @@ protocol-level work.
 - Use `activity list` for read-only account-wide or resource-scoped history.
   Pass a remote path or `--space` when the requested scope is narrower than the
   account.
+- Use `event watch` only when the user wants future real-time events. It does
+  not replay missed events; use `--jsonl` for automation and `--once` for a
+  single event. Add `--max-wait DURATION` with `--once` when the agent must not
+  wait indefinitely.
 - Use `notification list` and `notification info` to inspect unread events.
   In oCIS, `notification dismiss` is the server's mark-as-read operation; it
   does not delete the resource referenced by the notification.

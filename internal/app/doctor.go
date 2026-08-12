@@ -97,6 +97,14 @@ func RunDoctorWithOptions(
 		Name: "resumable uploads", Status: tusStatus,
 		Detail: resumableUploadCapabilityDetail(features),
 	})
+	eventStatus := "unsupported"
+	if features.Core.SupportSSE {
+		eventStatus = "ok"
+	}
+	checks = append(checks, DoctorCheck{
+		Name: "real-time events", Status: eventStatus,
+		Detail: "core.support-sse",
+	})
 	if _, err := client.stat("/"); err != nil {
 		return classifyProtocolError("check DAV authentication", err)
 	}

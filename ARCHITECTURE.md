@@ -16,6 +16,7 @@ internal/
   auth/               OIDC protocol implementation
   config/             persisted profile model and atomic storage
   credentials/        OS credential-service adapter
+  eventstream/        authenticated server-sent-events protocol client
   federation/         ScienceMesh OCM invitation and connection client
   graph/              LibreGraph Spaces, directory, and permission client
   httpapi/            authenticated retrying HTTP transport
@@ -59,7 +60,7 @@ without starting a subprocess.
   `batch_service.go`, `filesystem_service.go`, `filesystem_tree_service.go`,
   `filesystem_du_service.go`, `filesystem_touch_service.go`,
   `filesystem_walk.go`, `metadata_service.go`,
-  `activity_service.go`, `notification_service.go`,
+  `activity_service.go`, `event_service.go`, `notification_service.go`,
   `share_overview_service.go`,
   `space_member_service.go`, `space_update_service.go`,
   `space_lifecycle_service.go`, and
@@ -80,6 +81,9 @@ without starting a subprocess.
   protected resumable-upload locations in separate size-bounded entries in
   macOS Keychain, Linux Secret Service, or Windows Credential Manager;
   no plaintext or legacy-format migration path exists.
+- `internal/eventstream`: open one authenticated oCIS SSE connection, validate
+  its media type, and decode bounded standard SSE fields. Reconnect and output
+  policy remain in the application layer.
 - `internal/federation`: create, list, and accept ScienceMesh invitation tokens
   and list or remove accepted OCM user connections. It has no profile,
   persistence, Cobra, or resource-sharing policy of its own.
@@ -140,7 +144,7 @@ without starting a subprocess.
   scalar custom-property `PROPFIND`/`PROPPATCH` operations.
 
 Protocol-specific behavior belongs in dedicated `internal/activities`, `internal/auth`,
-`internal/federation`, `internal/graph`, `internal/notifications`,
+`internal/eventstream`, `internal/federation`, `internal/graph`, `internal/notifications`,
 `internal/search`, `internal/sharing`, `internal/trash`, `internal/versions`,
 and `internal/webdav` adapters. Recursive local/remote
 traversal belongs in `internal/transfer`.

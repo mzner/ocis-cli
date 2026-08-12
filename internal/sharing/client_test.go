@@ -83,6 +83,7 @@ func TestCapabilities(t *testing.T) {
 			t.Fatalf("path: %s", request.URL.Path)
 		}
 		writeOCS(writer, `{"capabilities":{
+			"core":{"support-sse":true},
 			"dav":{"reports":["search-files"]},
 			"files":{"tus_support":{
 				"version":"1.0.0","resumable":"1.0.0",
@@ -108,7 +109,8 @@ func TestCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !capabilities.Sharing.APIEnabled ||
+	if !capabilities.Core.SupportSSE ||
+		!capabilities.Sharing.APIEnabled ||
 		len(capabilities.DAV.Reports) != 1 ||
 		capabilities.DAV.Reports[0] != "search-files" ||
 		!capabilities.Sharing.GroupEnabled ||

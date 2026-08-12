@@ -14,6 +14,7 @@ import (
 	"github.com/mzner/ocis-cli/internal/auth"
 	appconfig "github.com/mzner/ocis-cli/internal/config"
 	"github.com/mzner/ocis-cli/internal/credentials"
+	"github.com/mzner/ocis-cli/internal/eventstream"
 	"github.com/mzner/ocis-cli/internal/federation"
 	"github.com/mzner/ocis-cli/internal/graph"
 	"github.com/mzner/ocis-cli/internal/httpapi"
@@ -40,6 +41,7 @@ type client struct {
 	store         *store
 	ctx           context.Context
 	activities    *activities.Client
+	events        *eventstream.Client
 	dav           *webdav.Client
 	graph         *graph.Client
 	search        *search.Client
@@ -59,6 +61,19 @@ func (client *client) activitiesClient() *activities.Client {
 		client.activities = activities.NewClient(client.apiConfig(), client.http)
 	}
 	return client.activities
+}
+
+func (client *client) eventStreamClient() *eventstream.Client {
+	if client.events == nil {
+		config := client.apiConfig()
+		// The application owns reconnects for a long-lived stream. Disabling the
+		// generic request retries avoids two overlapping retry loops.
+		config.Retries = 0
+		client.events = eventstream.NewClient(
+			config, httpClientFor(client.profile, 0),
+		)
+	}
+	return client.events
 }
 
 func (client *client) apiConfig() httpapi.Config {

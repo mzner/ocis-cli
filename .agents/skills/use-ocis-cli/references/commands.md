@@ -129,6 +129,20 @@ remote path to use the current file root, or pass `--space SPACE` to scope the
 query to that Space. Use `--depth`, `--limit`, and `--sort` for server-side
 filtering. Activity history is read-only.
 
+## Real-time events
+
+| Command | Purpose |
+| --- | --- |
+| `event watch` | Watch future events visible to the authenticated user until interrupted. |
+| `event watch --type TYPE` | Show only selected event names; repeat the flag or comma-separate values. |
+| `event watch --once` | Exit after the first matching event. |
+| `event watch --once --max-wait DURATION` | Wait for one matching event without hanging indefinitely. |
+| `event types` | List event names known by this CLI. |
+
+Use `--jsonl`, not `--json`, for the open-ended stream. SSE has no replay, so
+use `activity list` or `notification list` when retained state is required.
+Never describe `event watch` as a lossless audit log.
+
 ## Notifications
 
 | Command | Purpose |

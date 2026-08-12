@@ -301,6 +301,7 @@ func TestDoctorValidatesProfileAndCapabilities(t *testing.T) {
 		switch {
 		case request.URL.Path == "/ocs/v2.php/cloud/capabilities":
 			writeAppOCS(writer, `{"capabilities":{
+				"core":{"support-sse":true},
 				"files_sharing":{"api_enabled":true,"public":{
 					"enabled":true,"password":{"enforced":false},
 					"expire_date":{"enabled":true}
@@ -336,7 +337,8 @@ func TestDoctorValidatesProfileAndCapabilities(t *testing.T) {
 	}
 	if !strings.Contains(rendered.String(), `"type": "diagnostic"`) ||
 		!strings.Contains(rendered.String(), `"DAV capabilities"`) ||
-		!strings.Contains(rendered.String(), `"public links"`) {
+		!strings.Contains(rendered.String(), `"public links"`) ||
+		!strings.Contains(rendered.String(), `"real-time events"`) {
 		t.Fatalf("output: %s", rendered.String())
 	}
 }
