@@ -1,6 +1,6 @@
 ---
 name: use-ocis-cli
-description: Safely operate oCIS servers through the installed ocis command-line client. Use when an AI agent is asked to inspect, list, search, transfer, synchronize, share, restore, inspect activity history, manage notifications, or administer files, Spaces, shares, users, or groups in oCIS. Do not use for developing the ocis-cli source code.
+description: Safely operate oCIS servers through the installed ocis command-line client. Use when an AI agent is asked to inspect, list, search, transfer, archive, synchronize, share, restore, inspect activity history, manage notifications, or administer files, Spaces, shares, users, or groups in oCIS. Do not use for developing the ocis-cli source code.
 ---
 
 # Use oCIS CLI
@@ -52,6 +52,9 @@ protocol-level work.
 ## Choose the operation
 
 - Use `upload` or `download` for a one-time transfer.
+- Use `archive download` when the user wants the server to package one or more
+  remote resources into a single ZIP or TAR file. Check `archive formats` and
+  run with `--dry-run` before a broad archive download.
 - Use `sync push`, `sync pull`, or `sync bidirectional` for directory trees that
   should be reconciled. Run a sync with `--dry-run` first.
 - Use `share received` or `share overview` to inspect shares. Never accept a

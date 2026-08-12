@@ -53,6 +53,8 @@ same command.
 | `rm, remove` | Move a remote resource to trash unless the selected operation states otherwise. |
 | `upload` | Transfer a local file or directory to oCIS. |
 | `download` | Transfer a remote file or directory to the local filesystem. |
+| `archive download` | Ask the server to package selected remote resources into one local ZIP or TAR archive. |
+| `archive formats` | List archive formats and source limits advertised by the server. |
 | `du` | Summarize logical remote file sizes. |
 | `search, find` | Search remote files and directories. |
 | `batch` | Execute reviewed file operations supplied as JSONL. |

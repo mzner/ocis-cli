@@ -63,7 +63,8 @@ type Capabilities struct {
 		Reports []string `json:"reports,omitempty"`
 	} `json:"dav"`
 	Files struct {
-		TUS TUSCapabilities `json:"tus"`
+		TUS       TUSCapabilities        `json:"tus"`
+		Archivers []ArchiverCapabilities `json:"archivers,omitempty"`
 	} `json:"files"`
 	Sharing struct {
 		APIEnabled   bool `json:"apiEnabled"`
@@ -95,6 +96,16 @@ type Capabilities struct {
 			DeleteDisabled     bool     `json:"deleteDisabled"`
 		} `json:"users"`
 	} `json:"graph"`
+}
+
+// ArchiverCapabilities describes one server-advertised archive service.
+type ArchiverCapabilities struct {
+	Enabled     bool     `json:"enabled"`
+	Version     string   `json:"version,omitempty"`
+	Formats     []string `json:"formats,omitempty"`
+	URL         string   `json:"url,omitempty"`
+	MaxNumFiles int64    `json:"maxNumFiles,omitempty"`
+	MaxSize     int64    `json:"maxSize,omitempty"`
 }
 
 // TUSCapabilities contains resumable-upload policy advertised by oCIS.
@@ -265,6 +276,14 @@ func (client *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 				Reports []string `json:"reports"`
 			} `json:"dav"`
 			Files struct {
+				Archivers []struct {
+					Enabled     bool       `json:"enabled"`
+					Version     string     `json:"version"`
+					Formats     []string   `json:"formats"`
+					URL         string     `json:"archiver_url"`
+					MaxNumFiles int64Value `json:"max_num_files"`
+					MaxSize     int64Value `json:"max_size"`
+				} `json:"archivers"`
 				TUSSupport struct {
 					Version            string          `json:"version"`
 					Resumable          string          `json:"resumable"`
@@ -315,6 +334,18 @@ func (client *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 	result.Auth.MFA.SessionDuration =
 		raw.Capabilities.Auth.MFA.SessionDuration
 	result.DAV.Reports = raw.Capabilities.DAV.Reports
+	result.Files.Archivers = make(
+		[]ArchiverCapabilities, 0, len(raw.Capabilities.Files.Archivers),
+	)
+	for _, value := range raw.Capabilities.Files.Archivers {
+		result.Files.Archivers = append(
+			result.Files.Archivers, ArchiverCapabilities{
+				Enabled: value.Enabled, Version: value.Version,
+				Formats: append([]string(nil), value.Formats...), URL: value.URL,
+				MaxNumFiles: int64(value.MaxNumFiles), MaxSize: int64(value.MaxSize),
+			},
+		)
+	}
 	result.Files.TUS.Version = raw.Capabilities.Files.TUSSupport.Version
 	result.Files.TUS.Resumable = raw.Capabilities.Files.TUSSupport.Resumable
 	result.Files.TUS.Extensions = splitCapabilityList(
@@ -496,6 +527,26 @@ func (value *intValue) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*value = intValue(number)
+	return nil
+}
+
+type int64Value int64
+
+func (value *int64Value) UnmarshalJSON(data []byte) error {
+	var number int64
+	if err := json.Unmarshal(data, &number); err == nil {
+		*value = int64Value(number)
+		return nil
+	}
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	number, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return err
+	}
+	*value = int64Value(number)
 	return nil
 }
 

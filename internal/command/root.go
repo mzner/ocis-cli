@@ -141,6 +141,7 @@ func NewRootCommand() *cobra.Command {
 		newTreeCommand(options),
 		newDUCommand(options),
 		newBatchCommand(options),
+		newArchiveCommand(options),
 		newUploadCommand(options),
 		newDownloadCommand(options),
 		newMkdirCommand(options),

@@ -11,6 +11,7 @@ import (
 
 	"github.com/mzner/ocis-cli/internal/activities"
 	"github.com/mzner/ocis-cli/internal/apperror"
+	archiveclient "github.com/mzner/ocis-cli/internal/archiver"
 	"github.com/mzner/ocis-cli/internal/auth"
 	appconfig "github.com/mzner/ocis-cli/internal/config"
 	"github.com/mzner/ocis-cli/internal/credentials"
@@ -61,6 +62,12 @@ func (client *client) activitiesClient() *activities.Client {
 		client.activities = activities.NewClient(client.apiConfig(), client.http)
 	}
 	return client.activities
+}
+
+func (client *client) archiverClient(
+	endpoint string,
+) (*archiveclient.Client, error) {
+	return archiveclient.NewClient(client.apiConfig(), endpoint, client.http)
 }
 
 func (client *client) eventStreamClient() *eventstream.Client {

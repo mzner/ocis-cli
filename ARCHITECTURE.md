@@ -13,6 +13,7 @@ internal/
   command/            Cobra command tree and input validation
   app/                application use-case orchestration
   apperror/           stable error categories and exit-code mapping
+  archiver/            authenticated archive-download protocol client
   auth/               OIDC protocol implementation
   config/             persisted profile model and atomic storage
   credentials/        OS credential-service adapter
@@ -69,6 +70,9 @@ without starting a subprocess.
   contains shared application wiring.
 - `internal/apperror`: classify usage, authentication, not-found, and conflict
   errors without coupling application services to Cobra.
+- `internal/archiver`: validate same-origin server-advertised archive endpoints,
+  stream authenticated ZIP or TAR responses, and verify completed archives
+  before the application atomically installs them at a local destination.
 - `internal/activities`: query account-wide or resource-scoped activity
   history through the bounded oCIS Graph extension, preserving the localized
   message template and structured variables returned by the server.
@@ -143,7 +147,7 @@ without starting a subprocess.
   authentication headers, metadata and checksum response mapping, and safe
   scalar custom-property `PROPFIND`/`PROPPATCH` operations.
 
-Protocol-specific behavior belongs in dedicated `internal/activities`, `internal/auth`,
+Protocol-specific behavior belongs in dedicated `internal/activities`, `internal/archiver`, `internal/auth`,
 `internal/eventstream`, `internal/federation`, `internal/graph`, `internal/notifications`,
 `internal/search`, `internal/sharing`, `internal/trash`, `internal/versions`,
 and `internal/webdav` adapters. Recursive local/remote

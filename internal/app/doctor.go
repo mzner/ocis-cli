@@ -97,6 +97,14 @@ func RunDoctorWithOptions(
 		Name: "resumable uploads", Status: tusStatus,
 		Detail: resumableUploadCapabilityDetail(features),
 	})
+	archiveStatus := "unsupported"
+	if _, err := selectArchiver(features.Files.Archivers); err == nil {
+		archiveStatus = "ok"
+	}
+	checks = append(checks, DoctorCheck{
+		Name: "archive downloads", Status: archiveStatus,
+		Detail: archiverCapabilityDetail(features),
+	})
 	eventStatus := "unsupported"
 	if features.Core.SupportSSE {
 		eventStatus = "ok"
