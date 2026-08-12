@@ -1242,6 +1242,48 @@ have permission to list grants on the selected resource, so access can differ
 between users and Spaces. The CLI reports that authorization decision instead
 of assuming that every authenticated user can inspect every activity.
 
+## Real-time events
+
+Watch events delivered to the authenticated user as they happen:
+
+```sh
+ocis event watch
+ocis event watch --type userlog-notification
+ocis event watch --type share-created --type share-removed
+ocis event watch --once
+ocis event watch --type postprocessing-finished --once --max-wait 30s
+ocis --jsonl event watch
+```
+
+`--type` filters locally and can be repeated or given a comma-separated list.
+`--once` exits after the first matching event, which is useful in scripts.
+Combine `--once` with `--max-wait DURATION` to avoid waiting indefinitely when
+no matching event arrives. Shell completion suggests known event names, but
+manually entered names remain accepted for compatibility with newer servers.
+`ocis event types` lists the event names known by this CLI; a server may add
+other names without requiring a CLI update. The list includes a short
+description for each known type.
+
+Human mode reports when the connection is ready, explains what it is watching,
+and shows reconnect progress on stderr. Events on stdout contain the UTC
+receive time, a readable description, and the useful fields actually sent by
+oCIS. File events currently carry stable item and Space IDs rather than remote
+paths, so those values are labeled explicitly. Notification events show the
+server's subject and message. A watch is an open-ended stream, so `--json` is
+rejected; use `--jsonl` for the complete payload in one versioned JSON envelope
+per event. Press Ctrl-C to stop cleanly. Unexpected disconnects use the global
+bounded `--retries` policy. Unlike ordinary commands, a watch has no overall
+HTTP timeout once connected.
+
+oCIS SSE streams contain only future events and do not replay events missed
+before the command started or while it was disconnected. Use `activity list`
+for retained file/Space history and `notification list` for the current unread
+userlog. A `backchannel-logout` event ends the watch with an authentication
+error; the CLI does not silently delete the saved profile or credentials.
+
+The command first checks the server's `core.support-sse` capability. Event
+availability and visibility remain server-controlled and user-specific.
+
 ## Notifications
 
 List and inspect the authenticated user's unread in-app notifications:

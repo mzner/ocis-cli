@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mzner/ocis-cli/internal/apperror"
+	"github.com/spf13/cobra"
 )
 
 func TestRootCommandMetadata(t *testing.T) {
@@ -72,9 +73,61 @@ func TestGeneratedHelpIncludesGlobalFlags(t *testing.T) {
 		"federation, federated, ocm",
 		"notification, notifications",
 		"activity, activities",
+		"event, events",
 	} {
 		if !strings.Contains(help, expected) {
 			t.Fatalf("help does not contain %q:\n%s", expected, help)
+		}
+	}
+}
+
+func TestEventCommandsAndAliasesAreDiscoverable(t *testing.T) {
+	root := NewRootCommand()
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"event", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"watch", "types"} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("event help missing %q:\n%s", expected, output.String())
+		}
+	}
+
+	output.Reset()
+	root = NewRootCommand()
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"event", "watch", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"--type", "--once", "--max-wait"} {
+		if !strings.Contains(output.String(), expected) {
+			t.Fatalf("event watch help missing %q:\n%s", expected, output.String())
+		}
+	}
+	watch, _, err := root.Find([]string{"event", "watch"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	complete, found := watch.GetFlagCompletionFunc("type")
+	if !found {
+		t.Fatal("--type completion is not registered")
+	}
+	values, directive := complete(watch, nil, "file")
+	if directive != cobra.ShellCompDirectiveNoFileComp ||
+		!strings.Contains(strings.Join(values, "\n"), "file-touched\tFile changed") {
+		t.Fatalf("completion values=%v directive=%v", values, directive)
+	}
+	for _, args := range [][]string{
+		{"events", "watch"}, {"event", "types"},
+	} {
+		root = NewRootCommand()
+		if _, _, err := root.Find(args); err != nil {
+			t.Fatalf("%v: %v", args, err)
 		}
 	}
 }

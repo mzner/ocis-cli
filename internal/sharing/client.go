@@ -49,6 +49,9 @@ type ListRequest struct {
 // Capabilities reports server support relevant to direct sharing, Spaces, and
 // public links.
 type Capabilities struct {
+	Core struct {
+		SupportSSE bool `json:"supportSSE"`
+	} `json:"core"`
 	Auth struct {
 		MFA struct {
 			Enabled         bool     `json:"enabled"`
@@ -248,6 +251,9 @@ func (client *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 	}
 	var raw struct {
 		Capabilities struct {
+			Core struct {
+				SupportSSE json.RawMessage `json:"support-sse"`
+			} `json:"core"`
 			Auth struct {
 				MFA struct {
 					Enabled         bool     `json:"enabled"`
@@ -303,6 +309,7 @@ func (client *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 		return Capabilities{}, err
 	}
 	var result Capabilities
+	result.Core.SupportSSE = capabilityBool(raw.Capabilities.Core.SupportSSE)
 	result.Auth.MFA.Enabled = raw.Capabilities.Auth.MFA.Enabled
 	result.Auth.MFA.LevelNames = raw.Capabilities.Auth.MFA.LevelNames
 	result.Auth.MFA.SessionDuration =
