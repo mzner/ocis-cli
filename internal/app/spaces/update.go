@@ -1,4 +1,4 @@
-package app
+package spaces
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"github.com/mzner/ocis-cli/internal/graph"
 )
 
-func runSpaceUpdate(
+func RunUpdate(
 	ctx context.Context,
-	request SpaceUpdateRequest,
+	request UpdateRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	options.Logger.Debug("run space update")
 	if request.Name == nil && request.Description == nil &&
@@ -63,7 +63,7 @@ func runSpaceUpdate(
 			"Would update project space %s (%s)\n", selected.Name, selected.ID,
 		)
 	}
-	updated, err := client.graphClient().UpdateDrive(ctx, selected.ID, update)
+	updated, err := client.Graph().UpdateDrive(ctx, selected.ID, update)
 	if err != nil {
 		return err
 	}
@@ -77,22 +77,22 @@ func resolveProjectSpace(
 	ctx context.Context,
 	identifier string,
 	selectedProfile string,
-	options RunOptions,
-) (*client, space, error) {
-	client, err := newClientWithOptions(ctx, selectedProfile, options)
+	options Options,
+) (Client, graph.Drive, error) {
+	client, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
-		return nil, space{}, err
+		return nil, graph.Drive{}, err
 	}
-	spaces, err := client.graphClient().ListDrives(ctx)
+	spaces, err := client.Graph().ListDrives(ctx)
 	if err != nil {
-		return nil, space{}, err
+		return nil, graph.Drive{}, err
 	}
-	selected, err := resolveSpace(spaces, identifier)
+	selected, err := Resolve(spaces, identifier)
 	if err != nil {
-		return nil, space{}, err
+		return nil, graph.Drive{}, err
 	}
 	if selected.DriveType != "project" {
-		return nil, space{}, apperror.Wrap(
+		return nil, graph.Drive{}, apperror.Wrap(
 			apperror.KindUsage, "space",
 			fmt.Errorf(
 				"space %q has type %q; this operation requires a project space",

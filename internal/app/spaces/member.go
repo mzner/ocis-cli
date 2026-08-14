@@ -1,4 +1,4 @@
-package app
+package spaces
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	appoutput "github.com/mzner/ocis-cli/internal/output"
 )
 
-func runSpaceMember(
+func RunMember(
 	ctx context.Context,
-	request SpaceMemberRequest,
+	request MemberRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	options.Logger.Debug(
 		"run space member operation", "operation", request.Operation,
@@ -27,13 +27,13 @@ func runSpaceMember(
 		return err
 	}
 	switch request.Operation {
-	case SpaceMemberList:
+	case MemberList:
 		return listSpaceMembers(ctx, client, selected, options)
-	case SpaceMemberAdd:
+	case MemberAdd:
 		return addSpaceMember(ctx, client, selected, request, options)
-	case SpaceMemberUpdate:
+	case MemberUpdate:
 		return updateSpaceMember(ctx, client, selected, request, options)
-	case SpaceMemberRemove:
+	case MemberRemove:
 		return removeSpaceMember(ctx, client, selected, request, options)
 	default:
 		return apperror.Wrap(
@@ -44,9 +44,9 @@ func runSpaceMember(
 }
 
 func listSpaceMembers(
-	ctx context.Context, client *client, selected space, options RunOptions,
+	ctx context.Context, client Client, selected graph.Drive, options Options,
 ) error {
-	permissions, err := client.graphClient().ListSpacePermissions(ctx, selected.ID)
+	permissions, err := client.Graph().ListSpacePermissions(ctx, selected.ID)
 	if err != nil {
 		return err
 	}
@@ -68,10 +68,10 @@ func listSpaceMembers(
 
 func addSpaceMember(
 	ctx context.Context,
-	client *client,
-	selected space,
-	request SpaceMemberRequest,
-	options RunOptions,
+	client Client,
+	selected graph.Drive,
+	request MemberRequest,
+	options Options,
 ) error {
 	request.RecipientID = strings.TrimSpace(request.RecipientID)
 	request.RecipientType = strings.ToLower(strings.TrimSpace(request.RecipientType))
@@ -117,7 +117,7 @@ func addSpaceMember(
 			strings.ToLower(role.DisplayName),
 		)
 	}
-	permission, err := client.graphClient().AddSpaceMember(
+	permission, err := client.Graph().AddSpaceMember(
 		ctx, selected.ID,
 		graph.InviteRequest{
 			Recipients: []graph.Recipient{{
@@ -139,10 +139,10 @@ func addSpaceMember(
 
 func updateSpaceMember(
 	ctx context.Context,
-	client *client,
-	selected space,
-	request SpaceMemberRequest,
-	options RunOptions,
+	client Client,
+	selected graph.Drive,
+	request MemberRequest,
+	options Options,
 ) error {
 	request.PermissionID = strings.TrimSpace(request.PermissionID)
 	if request.PermissionID == "" {
@@ -168,7 +168,7 @@ func updateSpaceMember(
 			strings.ToLower(role.DisplayName),
 		)
 	}
-	permission, err := client.graphClient().UpdateSpaceMember(
+	permission, err := client.Graph().UpdateSpaceMember(
 		ctx, selected.ID, request.PermissionID,
 		graph.PermissionUpdateRequest{Roles: []string{role.ID}},
 	)
@@ -186,10 +186,10 @@ func updateSpaceMember(
 
 func removeSpaceMember(
 	ctx context.Context,
-	client *client,
-	selected space,
-	request SpaceMemberRequest,
-	options RunOptions,
+	client Client,
+	selected graph.Drive,
+	request MemberRequest,
+	options Options,
 ) error {
 	request.PermissionID = strings.TrimSpace(request.PermissionID)
 	if request.PermissionID == "" {
@@ -206,7 +206,7 @@ func removeSpaceMember(
 			request.PermissionID, selected.Name,
 		)
 	}
-	if err := client.graphClient().RemoveSpaceMember(
+	if err := client.Graph().RemoveSpaceMember(
 		ctx, selected.ID, request.PermissionID,
 	); err != nil {
 		return err
@@ -223,7 +223,7 @@ func removeSpaceMember(
 
 func resolveSpaceRole(
 	ctx context.Context,
-	client *client,
+	client Client,
 	spaceID string,
 	requested string,
 ) (graph.Permissions, graph.RoleDefinition, error) {
@@ -232,7 +232,7 @@ func resolveSpaceRole(
 		return graph.Permissions{}, graph.RoleDefinition{},
 			usageSpaceMember("role must not be empty")
 	}
-	permissions, err := client.graphClient().ListSpacePermissions(ctx, spaceID)
+	permissions, err := client.Graph().ListSpacePermissions(ctx, spaceID)
 	if err != nil {
 		return graph.Permissions{}, graph.RoleDefinition{}, err
 	}

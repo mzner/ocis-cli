@@ -4,6 +4,7 @@ import (
 	"context"
 
 	adminapp "github.com/mzner/ocis-cli/internal/app/admin"
+	spacesapp "github.com/mzner/ocis-cli/internal/app/spaces"
 	"github.com/mzner/ocis-cli/internal/graph"
 )
 
@@ -40,14 +41,14 @@ func adminOptions(options RunOptions) adminapp.Options {
 			if !ok {
 				return writeAdminSpaceDetailsThroughPort(ctx, selected, drive, options)
 			}
-			details, err := loadSpaceDetails(ctx, adapter.client, drive)
+			details, err := loadSpaceDetailsThroughDomain(ctx, adapter.client, drive, options)
 			if err != nil {
 				return err
 			}
 			if options.OutputMode != "human" {
 				return writeOutput(options, "admin-space", details)
 			}
-			return writeSpaceDetails(options, details)
+			return spacesapp.WriteDetails(spacesOptions(options), details)
 		},
 	}
 }

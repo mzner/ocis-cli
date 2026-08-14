@@ -1,4 +1,4 @@
-package app
+package filesystem
 
 import (
 	"context"
@@ -43,33 +43,33 @@ type propertyResult struct {
 	DryRun    bool   `json:"dryRun,omitempty"`
 }
 
-func runMetadata(
+func RunMetadata(
 	ctx context.Context,
 	request MetadataRequest,
 	selected string,
-	options RunOptions,
+	options Options,
 ) error {
 	if err := validateMetadataRequest(request); err != nil {
 		return apperror.Wrap(apperror.KindUsage, "metadata", err)
 	}
-	client, err := newClientWithOptions(ctx, selected, options)
+	client, err := options.NewClient(ctx, selected)
 	if err != nil {
 		return err
 	}
-	if err := client.selectSpace(options.Space); err != nil {
+	if err := client.SelectSpace(options.Space); err != nil {
 		return err
 	}
 
 	switch request.Operation {
-	case MetadataTagList:
+	case TagList:
 		return listResourceTags(client, request.Path, options)
-	case MetadataTagAdd, MetadataTagRemove:
+	case TagAdd, TagRemove:
 		return mutateResourceTags(ctx, client, request, options)
-	case MetadataFavoriteSet, MetadataFavoriteUnset:
+	case FavoriteSet, FavoriteUnset:
 		return mutateFavorite(client, request, options)
-	case MetadataPropertyGet:
+	case PropertyGet:
 		return getCustomProperty(client, request, options)
-	case MetadataPropertySet, MetadataPropertyRemove:
+	case PropertySet, PropertyRemove:
 		return mutateCustomProperty(client, request, options)
 	default:
 		return apperror.Wrap(
@@ -84,14 +84,14 @@ func validateMetadataRequest(request MetadataRequest) error {
 		return errors.New("remote path is required")
 	}
 	switch request.Operation {
-	case MetadataTagList, MetadataFavoriteSet, MetadataFavoriteUnset:
+	case TagList, FavoriteSet, FavoriteUnset:
 		return nil
-	case MetadataTagAdd, MetadataTagRemove:
+	case TagAdd, TagRemove:
 		if len(normalizeTags(request.Tags)) == 0 {
 			return errors.New("at least one non-empty tag is required")
 		}
 		return nil
-	case MetadataPropertyGet, MetadataPropertySet, MetadataPropertyRemove:
+	case PropertyGet, PropertySet, PropertyRemove:
 		return validateCustomProperty(request.Namespace, request.Name)
 	default:
 		return fmt.Errorf("unknown metadata operation %q", request.Operation)
@@ -144,9 +144,9 @@ func normalizeTags(values []string) []string {
 }
 
 func listResourceTags(
-	client *client, remote string, options RunOptions,
+	client Client, remote string, options Options,
 ) error {
-	item, err := client.stat(remote)
+	item, err := client.Stat(remote)
 	if err != nil {
 		return err
 	}
@@ -171,11 +171,11 @@ func listResourceTags(
 
 func mutateResourceTags(
 	ctx context.Context,
-	client *client,
+	client Client,
 	request MetadataRequest,
-	options RunOptions,
+	options Options,
 ) error {
-	item, err := client.stat(request.Path)
+	item, err := client.Stat(request.Path)
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func mutateResourceTags(
 	}
 	tags := normalizeTags(request.Tags)
 	operation := "add"
-	if request.Operation == MetadataTagRemove {
+	if request.Operation == TagRemove {
 		operation = "remove"
 	}
 	if request.DryRun {
@@ -200,10 +200,10 @@ func mutateResourceTags(
 			operation, strings.Join(tags, ", "), item.Path,
 		)
 	}
-	if request.Operation == MetadataTagAdd {
-		err = client.graphClient().AddTags(ctx, item.ResourceID, tags)
+	if request.Operation == TagAdd {
+		err = client.AddTags(ctx, item.ResourceID, tags)
 	} else {
-		err = client.graphClient().RemoveTags(ctx, item.ResourceID, tags)
+		err = client.RemoveTags(ctx, item.ResourceID, tags)
 	}
 	if err != nil {
 		if status := protocolStatus(err); status == http.StatusNotFound ||
@@ -214,7 +214,7 @@ func mutateResourceTags(
 		}
 		return err
 	}
-	updated, err := client.stat(request.Path)
+	updated, err := client.Stat(request.Path)
 	if err != nil {
 		return fmt.Errorf("tags changed but refreshed metadata failed: %w", err)
 	}
@@ -229,13 +229,13 @@ func mutateResourceTags(
 }
 
 func mutateFavorite(
-	client *client, request MetadataRequest, options RunOptions,
+	client Client, request MetadataRequest, options Options,
 ) error {
-	item, err := client.stat(request.Path)
+	item, err := client.Stat(request.Path)
 	if err != nil {
 		return err
 	}
-	selected := request.Operation == MetadataFavoriteSet
+	selected := request.Operation == FavoriteSet
 	operation := "set"
 	if !selected {
 		operation = "unset"
@@ -254,7 +254,7 @@ func mutateFavorite(
 		)
 	}
 	if selected {
-		err = client.setProperty(
+		err = client.SetProperty(
 			request.Path,
 			webdav.PropertyName{
 				Namespace: ownCloudNamespace, Name: "favorite",
@@ -262,7 +262,7 @@ func mutateFavorite(
 			"1",
 		)
 	} else {
-		err = client.removeProperty(
+		err = client.RemoveProperty(
 			request.Path,
 			webdav.PropertyName{
 				Namespace: ownCloudNamespace, Name: "favorite",
@@ -282,12 +282,12 @@ func mutateFavorite(
 }
 
 func getCustomProperty(
-	client *client, request MetadataRequest, options RunOptions,
+	client Client, request MetadataRequest, options Options,
 ) error {
 	property := webdav.PropertyName{
 		Namespace: strings.TrimSpace(request.Namespace), Name: request.Name,
 	}
-	value, err := client.getProperty(request.Path, property)
+	value, err := client.GetProperty(request.Path, property)
 	if err != nil {
 		if errors.Is(err, webdav.ErrPropertyNotFound) {
 			return fmt.Errorf(
@@ -307,9 +307,9 @@ func getCustomProperty(
 }
 
 func mutateCustomProperty(
-	client *client, request MetadataRequest, options RunOptions,
+	client Client, request MetadataRequest, options Options,
 ) error {
-	item, err := client.stat(request.Path)
+	item, err := client.Stat(request.Path)
 	if err != nil {
 		return err
 	}
@@ -317,7 +317,7 @@ func mutateCustomProperty(
 		Namespace: strings.TrimSpace(request.Namespace), Name: request.Name,
 	}
 	operation := "set"
-	if request.Operation == MetadataPropertyRemove {
+	if request.Operation == PropertyRemove {
 		operation = "remove"
 	}
 	result := propertyResult{
@@ -334,10 +334,10 @@ func mutateCustomProperty(
 			operation, property.Namespace, property.Name, item.Path,
 		)
 	}
-	if request.Operation == MetadataPropertySet {
-		err = client.setProperty(request.Path, property, request.Value)
+	if request.Operation == PropertySet {
+		err = client.SetProperty(request.Path, property, request.Value)
 	} else {
-		err = client.removeProperty(request.Path, property)
+		err = client.RemoveProperty(request.Path, property)
 	}
 	if err != nil {
 		return err
@@ -350,8 +350,8 @@ func mutateCustomProperty(
 	)
 }
 
-func requirePropertyWrites(client *client) error {
-	capabilities, err := client.capabilities()
+func requirePropertyWrites(client Client) error {
+	capabilities, err := client.Capabilities()
 	if err != nil {
 		return fmt.Errorf("discover WebDAV property support: %w", err)
 	}

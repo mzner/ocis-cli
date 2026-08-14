@@ -1,4 +1,4 @@
-package app
+package spaces
 
 import (
 	"context"
@@ -40,8 +40,8 @@ type spaceAdministration struct {
 	CanManageMembers bool `json:"canManageMembers"`
 }
 
-type spaceDetails struct {
-	Space                space               `json:"space"`
+type Details struct {
+	Space                graph.Drive         `json:"space"`
 	Members              []SpaceMember       `json:"members"`
 	AvailableRoles       []spaceRole         `json:"availableRoles"`
 	AllowedActions       []string            `json:"allowedActions"`
@@ -53,10 +53,10 @@ type spaceDetails struct {
 	QuotaUnlimited       bool                `json:"quotaUnlimited"`
 }
 
-func loadSpaceDetails(
-	ctx context.Context, client *client, selected space,
-) (spaceDetails, error) {
-	details := spaceDetails{
+func LoadDetails(
+	ctx context.Context, client Client, selected graph.Drive,
+) (Details, error) {
+	details := Details{
 		Space: selected, Members: []SpaceMember{}, AvailableRoles: []spaceRole{},
 		QuotaUnlimited: selected.Quota.Total == 0,
 	}
@@ -64,13 +64,13 @@ func loadSpaceDetails(
 		details.QuotaUsagePercent =
 			float64(selected.Quota.Used) / float64(selected.Quota.Total) * 100
 	}
-	permissions, err := client.graphClient().ListSpacePermissions(ctx, selected.ID)
+	permissions, err := client.Graph().ListSpacePermissions(ctx, selected.ID)
 	if err != nil {
 		switch protocolStatus(err) {
 		case 401, 403:
 			return details, nil
 		default:
-			return spaceDetails{}, err
+			return Details{}, err
 		}
 	}
 	details.PermissionsAvailable = true
@@ -80,7 +80,7 @@ func loadSpaceDetails(
 	details.Administration = administrationFromActions(permissions.AllowedActions)
 	details.Administration.CanListMembers = true
 
-	current, err := client.graphClient().GetMe(ctx)
+	current, err := client.Graph().GetMe(ctx)
 	if err == nil {
 		details.CurrentUser = &current
 		for _, member := range details.Members {
@@ -93,7 +93,7 @@ func loadSpaceDetails(
 	return details, nil
 }
 
-func writeSpaceDetails(options RunOptions, details spaceDetails) error {
+func WriteDetails(options Options, details Details) error {
 	value := details.Space
 	quota := fmt.Sprintf("%d / %d bytes", value.Quota.Used, value.Quota.Total)
 	if details.QuotaUnlimited {

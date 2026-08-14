@@ -16,7 +16,9 @@ func TestDomainPackagesDoNotReachOuterLayers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, domain := range []string{"admin", "archive", "share", "sync"} {
+	for _, domain := range []string{
+		"admin", "archive", "filesystem", "share", "spaces", "sync",
+	} {
 		directory := filepath.Join(root, domain)
 		entries, err := os.ReadDir(directory)
 		if err != nil {

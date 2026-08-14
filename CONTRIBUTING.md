@@ -28,7 +28,8 @@ debugging targets.
 - Put small cross-domain orchestration in the `internal/app` facade. Put large
   domain policy in `internal/app/<domain>` behind narrow injected ports; domain
   packages must not import the parent `internal/app` package. Current domain
-  boundaries are `admin`, `archive`, `share`, and `sync`.
+  boundaries are `admin`, `archive`, `filesystem`, `share`, `spaces`, and
+  `sync`.
 - Keep authentication and WebDAV protocol details out of commands.
 - Pass contexts, dependencies, and output streams explicitly.
 - Add tests at the narrowest package boundary.

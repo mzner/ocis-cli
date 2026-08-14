@@ -1,4 +1,4 @@
-package app
+package filesystem
 
 import (
 	"fmt"
@@ -6,10 +6,11 @@ import (
 	"strings"
 
 	"github.com/mzner/ocis-cli/internal/apperror"
+	"github.com/mzner/ocis-cli/internal/webdav"
 )
 
 type filesystemWalkEntry struct {
-	item        item
+	item        webdav.Item
 	depth       int
 	last        bool
 	parentsLast []bool
@@ -21,10 +22,10 @@ type filesystemWalk struct {
 }
 
 func walkFilesystem(
-	client *client, remote string, maxDepth, maxEntries int,
+	client Client, remote string, maxDepth, maxEntries int,
 	detectDepthLimit bool, operation string,
 ) (filesystemWalk, error) {
-	root, err := client.stat(remote)
+	root, err := client.Stat(remote)
 	if err != nil {
 		return filesystemWalk{}, err
 	}
@@ -36,7 +37,7 @@ func walkFilesystem(
 	}
 	if maxDepth == 0 {
 		if detectDepthLimit {
-			children, listErr := client.list(remote)
+			children, listErr := client.List(remote)
 			if listErr != nil {
 				return filesystemWalk{}, listErr
 			}
@@ -54,11 +55,11 @@ func walkFilesystem(
 }
 
 func appendFilesystemWalk(
-	client *client, remote string, depth int, parentsLast []bool,
+	client Client, remote string, depth int, parentsLast []bool,
 	maxDepth, maxEntries int, detectDepthLimit bool, operation string,
 	result *filesystemWalk,
 ) error {
-	children, err := client.list(remote)
+	children, err := client.List(remote)
 	if err != nil {
 		return err
 	}
@@ -100,7 +101,7 @@ func appendFilesystemWalk(
 			continue
 		}
 		if detectDepthLimit && childDepth == maxDepth {
-			grandchildren, listErr := client.list(child.Path)
+			grandchildren, listErr := client.List(child.Path)
 			if listErr != nil {
 				return listErr
 			}

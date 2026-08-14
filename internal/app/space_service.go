@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	spacesapp "github.com/mzner/ocis-cli/internal/app/spaces"
+
 	"github.com/mzner/ocis-cli/internal/apperror"
 	appoutput "github.com/mzner/ocis-cli/internal/output"
 )
@@ -53,14 +55,14 @@ func runSpace(
 		if err != nil {
 			return err
 		}
-		details, err := loadSpaceDetails(ctx, client, value)
+		details, err := loadSpaceDetailsThroughDomain(ctx, client, value, options)
 		if err != nil {
 			return err
 		}
 		if options.OutputMode != appoutput.Human {
 			return writeOutput(options, "space", details)
 		}
-		return writeSpaceDetails(options, details)
+		return spacesapp.WriteDetails(spacesOptions(options), details)
 	case SpaceUse:
 		spaces, err := client.graphClient().ListMyDrives(ctx)
 		if err != nil {

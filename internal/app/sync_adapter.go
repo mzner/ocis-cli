@@ -26,7 +26,12 @@ func (adapter syncClientAdapter) EnsureCollection(remote string) error {
 	return adapter.client.ensureCollection(remote)
 }
 func (adapter syncClientAdapter) DiscoverUploadCapabilities(ctx context.Context) webdav.TUSCapabilities {
-	return discoverUploadCapabilities(ctx, adapter.client)
+	capabilities, err := adapter.client.sharingClient().Capabilities(ctx)
+	if err != nil {
+		adapter.client.logger.Debug("TUS capability discovery failed; using WebDAV PUT", "reason", err.Error())
+		return webdav.TUSCapabilities{}
+	}
+	return webdav.TUSCapabilities{Version: capabilities.Files.TUS.Version, Resumable: capabilities.Files.TUS.Resumable, Extensions: capabilities.Files.TUS.Extensions, MaxChunkSize: capabilities.Files.TUS.MaxChunkSize, HTTPMethodOverride: capabilities.Files.TUS.HTTPMethodOverride}
 }
 func (adapter syncClientAdapter) DAV() syncapp.DAVClient { return adapter.client.davClient() }
 

@@ -1,4 +1,4 @@
-package app
+package filesystem
 
 import (
 	"context"
@@ -18,31 +18,31 @@ import (
 	"golang.org/x/term"
 )
 
-func runFilesystem(
-	ctx context.Context, request FilesystemRequest, selected string, options RunOptions,
+func Run(
+	ctx context.Context, request Request, selected string, options Options,
 ) error {
 	options.Logger.Debug("run filesystem operation", "operation", request.Operation)
-	client, err := newClientWithOptions(ctx, selected, options)
+	client, err := options.NewClient(ctx, selected)
 	if err != nil {
 		return err
 	}
-	if err := client.selectSpace(options.Space); err != nil {
+	if err := client.SelectSpace(options.Space); err != nil {
 		return err
 	}
 	return runFilesystemWithClient(ctx, client, request, options)
 }
 
 func runFilesystemWithClient(
-	ctx context.Context, client *client,
-	request FilesystemRequest, options RunOptions,
+	ctx context.Context, client Client,
+	request Request, options Options,
 ) error {
 	switch request.Operation {
-	case FilesystemList:
+	case List:
 		remote := request.Source
 		if remote == "" {
 			remote = "/"
 		}
-		items, err := client.list(remote)
+		items, err := client.List(remote)
 		if err != nil {
 			return err
 		}
@@ -59,8 +59,8 @@ func runFilesystemWithClient(
 			)
 		}
 		return nil
-	case FilesystemStat:
-		meta, err := client.stat(request.Source)
+	case Stat:
+		meta, err := client.Stat(request.Source)
 		if err != nil {
 			return addSpaceStatHint(ctx, client, request.Source, err)
 		}
@@ -68,8 +68,8 @@ func runFilesystemWithClient(
 			return writeOutput(options, "item", meta)
 		}
 		return writeHumanStat(options.Out, meta)
-	case FilesystemCat:
-		meta, err := client.stat(request.Source)
+	case Cat:
+		meta, err := client.Stat(request.Source)
 		if err != nil {
 			return err
 		}
@@ -79,22 +79,22 @@ func runFilesystemWithClient(
 				fmt.Errorf("%s is a directory", cleanRemote(request.Source)),
 			)
 		}
-		return client.stream(request.Source, options.Out)
-	case FilesystemTree:
+		return client.Stream(request.Source, options.Out)
+	case Tree:
 		return treeFilesystem(client, request, options)
-	case FilesystemDU:
+	case DU:
 		return duFilesystem(client, request, options)
-	case FilesystemUpload:
+	case Upload:
 		return uploadFilesystem(ctx, client, request, options)
-	case FilesystemDownload:
+	case Download:
 		return downloadFilesystem(ctx, client, request, options)
-	case FilesystemMkdir:
+	case Mkdir:
 		return mkdirFilesystem(client, request, options)
-	case FilesystemTouch:
+	case Touch:
 		return touchFilesystem(client, request, options)
-	case FilesystemMove, FilesystemCopy:
+	case Move, Copy:
 		return copyOrMoveFilesystem(client, request, options)
-	case FilesystemRemove:
+	case Remove:
 		if request.DryRun {
 			return output(
 				options, "resource",
@@ -105,7 +105,7 @@ func runFilesystemWithClient(
 				"Would delete %s\n", cleanRemote(request.Source),
 			)
 		}
-		if err := client.remove(request.Source, request.Recursive); err != nil {
+		if err := client.Remove(request.Source, request.Recursive); err != nil {
 			return err
 		}
 		return output(
@@ -123,7 +123,7 @@ func runFilesystemWithClient(
 	}
 }
 
-func writeHumanStat(writer io.Writer, meta item) error {
+func writeHumanStat(writer io.Writer, meta webdav.Item) error {
 	fields := [][2]string{
 		{"Name", meta.Name},
 		{"Path", meta.Path},
@@ -170,12 +170,12 @@ func writeHumanStat(writer io.Writer, meta item) error {
 }
 
 func addSpaceStatHint(
-	ctx context.Context, client *client, remote string, statErr error,
+	ctx context.Context, client Client, remote string, statErr error,
 ) error {
 	if webdav.StatusCode(statErr) != 404 {
 		return statErr
 	}
-	spaces, err := client.graphClient().ListMyDrives(ctx)
+	spaces, err := client.ListMyDrives(ctx)
 	if err != nil {
 		return statErr
 	}
@@ -205,7 +205,7 @@ func shellQuote(value string) string {
 }
 
 func uploadFilesystem(
-	ctx context.Context, client *client, request FilesystemRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	if request.DryRun {
 		return output(
@@ -246,7 +246,7 @@ func uploadFilesystem(
 	}
 	uploadCapabilities := webdav.TUSCapabilities{}
 	if !request.NoClobber {
-		uploadCapabilities = discoverUploadCapabilities(ctx, client)
+		uploadCapabilities = discoverUploadCapabilities(ctx, client, options)
 	}
 	if err := transfer.UploadWithOptions(
 		ctx, transferRemote(client, request, uploadCapabilities),
@@ -268,7 +268,7 @@ func uploadFilesystem(
 }
 
 func downloadFilesystem(
-	ctx context.Context, client *client, request FilesystemRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	if request.DryRun {
 		return output(
@@ -281,7 +281,7 @@ func downloadFilesystem(
 			cleanRemote(request.Source), request.Destination,
 		)
 	}
-	meta, err := client.stat(request.Source)
+	meta, err := client.Stat(request.Source)
 	if err != nil {
 		return err
 	}
@@ -331,7 +331,7 @@ func downloadFilesystem(
 }
 
 func copyOrMoveFilesystem(
-	client *client, request FilesystemRequest, options RunOptions,
+	client Client, request Request, options Options,
 ) error {
 	resolvedDestination, err := resolveCopyMoveDestination(
 		client, request.Source, request.Destination,
@@ -344,10 +344,10 @@ func copyOrMoveFilesystem(
 }
 
 func copyOrMoveFilesystemResolved(
-	client *client, request FilesystemRequest, options RunOptions,
+	client Client, request Request, options Options,
 ) error {
 	action, verb := "Moved", "move"
-	if request.Operation == FilesystemCopy {
+	if request.Operation == Copy {
 		action, verb = "Copied", "copy"
 	}
 	if request.DryRun {
@@ -363,10 +363,10 @@ func copyOrMoveFilesystemResolved(
 		)
 	}
 	var err error
-	if request.Operation == FilesystemCopy {
-		err = client.copy(request.Source, request.Destination, request.Overwrite)
+	if request.Operation == Copy {
+		err = client.Copy(request.Source, request.Destination, request.Overwrite)
 	} else {
-		err = client.move(request.Source, request.Destination, request.Overwrite)
+		err = client.Move(request.Source, request.Destination, request.Overwrite)
 	}
 	if err != nil {
 		return err
@@ -384,11 +384,11 @@ func copyOrMoveFilesystemResolved(
 }
 
 func resolveCopyMoveDestination(
-	client *client, source, destination string,
+	client Client, source, destination string,
 ) (string, error) {
 	cleanedDestination := cleanRemote(destination)
 	requiresDirectory := strings.HasSuffix(destination, "/")
-	meta, err := client.stat(cleanedDestination)
+	meta, err := client.Stat(cleanedDestination)
 	switch {
 	case err == nil && meta.Type == "directory":
 		name := path.Base(cleanRemote(source))
@@ -419,19 +419,19 @@ func resolveCopyMoveDestination(
 }
 
 func transferRemote(
-	client *client,
-	request FilesystemRequest,
+	client Client,
+	request Request,
 	uploadCapabilities webdav.TUSCapabilities,
 ) transfer.Remote {
 	return transfer.Remote{
 		Stat: func(_ context.Context, remote string) (transfer.Entry, error) {
-			value, err := client.stat(remote)
+			value, err := client.Stat(remote)
 			return transfer.Entry{
 				Name: value.Name, Path: value.Path, Type: value.Type, Size: value.Size,
 			}, err
 		},
 		List: func(_ context.Context, remote string) ([]transfer.Entry, error) {
-			values, err := client.list(remote)
+			values, err := client.List(remote)
 			entries := make([]transfer.Entry, len(values))
 			for index, value := range values {
 				entries[index] = transfer.Entry{
@@ -444,8 +444,8 @@ func transferRemote(
 		Upload: func(
 			_ context.Context, local, remote string, progress func(int64),
 		) error {
-			return client.davClient().UploadWithOptions(
-				client.context(), local, remote,
+			return client.Upload(
+				client.Context(), local, remote,
 				webdav.TransferOptions{
 					NoClobber: request.NoClobber,
 					Verify:    request.Verify, Progress: progress,
@@ -456,8 +456,8 @@ func transferRemote(
 		Download: func(
 			_ context.Context, remote, local string, progress func(int64),
 		) error {
-			return client.davClient().DownloadWithOptions(
-				client.context(), remote, local,
+			return client.Download(
+				client.Context(), remote, local,
 				webdav.TransferOptions{
 					NoClobber: request.NoClobber, Verify: request.Verify,
 					Resume: true, Progress: progress,
@@ -465,17 +465,17 @@ func transferRemote(
 			)
 		},
 		Mkdir: func(_ context.Context, remote string) error {
-			return client.ensureCollection(remote)
+			return client.EnsureCollection(remote)
 		},
 	}
 }
 
 func discoverUploadCapabilities(
-	ctx context.Context, client *client,
+	ctx context.Context, client Client, options Options,
 ) webdav.TUSCapabilities {
-	capabilities, err := client.sharingClient().Capabilities(ctx)
+	capabilities, err := client.SharingCapabilities(ctx)
 	if err != nil {
-		client.logger.Debug(
+		options.Logger.Debug(
 			"TUS capability discovery failed; using WebDAV PUT",
 			"reason", err.Error(),
 		)
@@ -494,7 +494,7 @@ func cleanRemote(remote string) string {
 	return "/" + strings.TrimPrefix(path.Clean("/"+remote), "/")
 }
 
-func progressReporter(options RunOptions) func(transfer.Progress) {
+func progressReporter(options Options) func(transfer.Progress) {
 	if options.Quiet || options.OutputMode != appoutput.Human {
 		return nil
 	}

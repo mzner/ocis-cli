@@ -1,4 +1,4 @@
-package app
+package filesystem
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 )
 
 func treeFilesystem(
-	client *client, request FilesystemRequest, options RunOptions,
+	client Client, request Request, options Options,
 ) error {
 	if request.MaxDepth < 0 {
 		return apperror.Wrap(
@@ -30,15 +30,15 @@ func treeFilesystem(
 	if err != nil {
 		return err
 	}
-	entries := make([]FilesystemTreeEntry, len(walk.entries))
+	entries := make([]TreeEntry, len(walk.entries))
 	for index, node := range walk.entries {
-		entries[index] = FilesystemTreeEntry{
+		entries[index] = TreeEntry{
 			Name: node.item.Name, Path: node.item.Path, Type: node.item.Type,
 			Size: node.item.Size, Depth: node.depth,
 		}
 	}
 	if options.OutputMode != appoutput.Human {
-		return writeOutput(options, "item", entries)
+		return writeOutput(options, "webdav.Item", entries)
 	}
 	rootLabel := remote
 	if walk.entries[0].item.Type == "directory" && remote != "/" {

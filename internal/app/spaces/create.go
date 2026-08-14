@@ -1,4 +1,4 @@
-package app
+package spaces
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"github.com/mzner/ocis-cli/internal/graph"
 )
 
-func runSpaceCreate(
+func RunCreate(
 	ctx context.Context,
-	request SpaceCreateRequest,
+	request CreateRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	options.Logger.Debug("run space create")
 	request.Name = strings.TrimSpace(request.Name)
@@ -50,11 +50,11 @@ func runSpaceCreate(
 		)
 	}
 
-	client, err := newClientWithOptions(ctx, selectedProfile, options)
+	client, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
-	created, err := client.graphClient().CreateDrive(ctx, createRequest)
+	created, err := client.Graph().CreateDrive(ctx, createRequest)
 	if err != nil {
 		return err
 	}

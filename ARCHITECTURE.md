@@ -14,7 +14,9 @@ internal/
   app/                public application facade and runtime composition
     admin/             account and global Space administration policy
     archive/           archive-download application policy
+    filesystem/        remote filesystem, batch, and metadata policy
     share/             direct, received, and public-link share policy
+    spaces/            project Space lifecycle and membership policy
     sync/              sync execution, state, jobs, and recovery policy
   apperror/           stable error categories and exit-code mapping
   archiver/            authenticated archive-download protocol client
@@ -46,8 +48,8 @@ test/
 
 `cmd/ocis` depends on `internal/command`, which depends on the public
 `internal/app` facade. Large application domains live in subpackages such as
-`internal/app/admin`, `internal/app/archive`, `internal/app/share`, and
-`internal/app/sync`. The facade composes runtime
+`internal/app/admin`, `internal/app/archive`, `internal/app/filesystem`,
+`internal/app/share`, `internal/app/spaces`, and `internal/app/sync`. The facade composes runtime
 clients into their narrow ports and preserves the public request and result
 types used by Cobra. Domain subpackages never import the parent `internal/app`
 package, which makes the dependency boundary compiler-enforced and prevents
@@ -80,6 +82,9 @@ without starting a subprocess.
   output, and safe local installation through a narrow client factory. It
   cannot access unrelated authentication, administration, sync, or sharing
   helpers in the parent package.
+- `internal/app/filesystem`: own remote file operations, bounded traversal,
+  batch execution, transfer presentation, and resource metadata policy behind
+  a narrow authenticated WebDAV/Graph port.
 - `internal/app/admin`: own account inventory and mutation, advertised role
   assignment, MFA-gated administration policy, and global Space inventory
   through narrow Graph and OCS capability ports.
@@ -87,6 +92,9 @@ without starting a subprocess.
   public-link application policy through a narrow authenticated client port.
   It cannot access unrelated archive, administration, sync, or configuration
   helpers in the parent package.
+- `internal/app/spaces`: own project Space creation, updates, lifecycle,
+  details, recipient resolution, and membership policy through a narrow Graph
+  port. Profile persistence remains in the parent adapter.
 - `internal/app/sync`: own one-way and bidirectional execution, conflict
   policy, named jobs, local state, and interrupted-run recovery through narrow
   WebDAV and persistence ports. It cannot access authentication secrets,

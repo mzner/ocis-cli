@@ -1,4 +1,4 @@
-package app
+package filesystem
 
 import (
 	"fmt"
@@ -10,11 +10,11 @@ import (
 )
 
 func mkdirFilesystem(
-	client *client, request FilesystemRequest, options RunOptions,
+	client Client, request Request, options Options,
 ) error {
 	target := cleanRemote(request.Source)
 	if !request.Parents {
-		if err := client.ensureCollection(target); err != nil {
+		if err := client.EnsureCollection(target); err != nil {
 			return err
 		}
 		return output(
@@ -40,7 +40,7 @@ func mkdirFilesystem(
 	)
 }
 
-func ensureDirectoryPath(client *client, target string) ([]string, error) {
+func ensureDirectoryPath(client Client, target string) ([]string, error) {
 	if target == "/" {
 		return nil, nil
 	}
@@ -49,7 +49,7 @@ func ensureDirectoryPath(client *client, target string) ([]string, error) {
 	current := "/"
 	for _, part := range parts {
 		current = path.Join(current, part)
-		meta, err := client.stat(current)
+		meta, err := client.Stat(current)
 		switch {
 		case err == nil && meta.Type == "directory":
 			continue
@@ -61,10 +61,10 @@ func ensureDirectoryPath(client *client, target string) ([]string, error) {
 		case webdav.StatusCode(err) != 404:
 			return nil, err
 		}
-		if err := client.ensureCollection(current); err != nil {
+		if err := client.EnsureCollection(current); err != nil {
 			return nil, err
 		}
-		meta, err = client.stat(current)
+		meta, err = client.Stat(current)
 		if err != nil {
 			return nil, fmt.Errorf("verify created directory %s: %w", current, err)
 		}

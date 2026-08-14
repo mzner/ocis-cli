@@ -1,4 +1,4 @@
-package app
+package spaces
 
 import (
 	"strings"

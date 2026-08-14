@@ -1,4 +1,4 @@
-package app
+package filesystem
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 )
 
 func duFilesystem(
-	client *client, request FilesystemRequest, options RunOptions,
+	client Client, request Request, options Options,
 ) error {
 	if request.MaxDepth < 0 {
 		return apperror.Wrap(
@@ -29,7 +29,7 @@ func duFilesystem(
 	if err != nil {
 		return err
 	}
-	usage := FilesystemUsage{
+	usage := Usage{
 		Path: remote, Entries: len(walk.entries), MaxDepth: request.MaxDepth,
 		MaxEntries: request.MaxEntries, Complete: !walk.depthLimited,
 	}

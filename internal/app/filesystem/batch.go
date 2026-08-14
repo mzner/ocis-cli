@@ -1,4 +1,4 @@
-package app
+package filesystem
 
 import (
 	"bufio"
@@ -38,9 +38,9 @@ func (err *batchRunError) Unwrap() error {
 	return err.first
 }
 
-func runBatch(
+func RunBatch(
 	ctx context.Context, request BatchRequest, selected string,
-	options RunOptions,
+	options Options,
 ) error {
 	if request.MaxOperations < 1 {
 		return apperror.Wrap(
@@ -62,11 +62,11 @@ func runBatch(
 	if err != nil {
 		return err
 	}
-	client, err := newClientWithOptions(ctx, selected, options)
+	client, err := options.NewClient(ctx, selected)
 	if err != nil {
 		return err
 	}
-	if err := client.selectSpace(options.Space); err != nil {
+	if err := client.SelectSpace(options.Space); err != nil {
 		return err
 	}
 
@@ -300,39 +300,39 @@ func normalizeBatchOperation(value string) string {
 	}
 }
 
-func batchFilesystemRequest(operation BatchOperation) FilesystemRequest {
+func batchFilesystemRequest(operation BatchOperation) Request {
 	verify := true
 	if operation.Verify != nil {
 		verify = *operation.Verify
 	}
-	request := FilesystemRequest{
+	request := Request{
 		Recursive: operation.Recursive, Overwrite: operation.Overwrite,
 		NoClobber: operation.NoClobber, Verify: verify, Parents: operation.Parents,
 	}
 	switch operation.Operation {
 	case "mkdir":
-		request.Operation = FilesystemMkdir
+		request.Operation = Mkdir
 		request.Source = operation.Path
 	case "touch":
-		request.Operation = FilesystemTouch
+		request.Operation = Touch
 		request.Source = operation.Path
 	case "remove":
-		request.Operation = FilesystemRemove
+		request.Operation = Remove
 		request.Source = operation.Path
 	case "copy":
-		request.Operation = FilesystemCopy
+		request.Operation = Copy
 		request.Source = operation.Source
 		request.Destination = operation.Destination
 	case "move":
-		request.Operation = FilesystemMove
+		request.Operation = Move
 		request.Source = operation.Source
 		request.Destination = operation.Destination
 	case "upload":
-		request.Operation = FilesystemUpload
+		request.Operation = Upload
 		request.Source = operation.Source
 		request.Destination = operation.Destination
 	case "download":
-		request.Operation = FilesystemDownload
+		request.Operation = Download
 		request.Source = operation.Source
 		request.Destination = operation.Destination
 	}
@@ -363,7 +363,7 @@ func newBatchResult(index int, operation parsedBatchOperation) BatchResult {
 	return result
 }
 
-func writeBatchSummary(options RunOptions, summary BatchSummary) error {
+func writeBatchSummary(options Options, summary BatchSummary) error {
 	if options.OutputMode == appoutput.JSONL {
 		return writeOutput(options, "batch-result", summary.Results)
 	}

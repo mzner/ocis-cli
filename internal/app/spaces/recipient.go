@@ -1,4 +1,4 @@
-package app
+package spaces
 
 import (
 	"context"
@@ -18,7 +18,7 @@ type spaceRecipient struct {
 
 func resolveSpaceRecipient(
 	ctx context.Context,
-	client *client,
+	client Client,
 	recipientType string,
 	identifier string,
 	isID bool,
@@ -30,7 +30,7 @@ func resolveSpaceRecipient(
 
 func resolveRecipient(
 	ctx context.Context,
-	client *client,
+	client Client,
 	recipientType string,
 	identifier string,
 	isID bool,
@@ -42,7 +42,7 @@ func resolveRecipient(
 	var candidates []spaceRecipient
 	switch recipientType {
 	case "user":
-		users, err := client.graphClient().SearchUsers(ctx, identifier)
+		users, err := client.Graph().SearchUsers(ctx, identifier)
 		if err != nil {
 			return spaceRecipient{}, err
 		}
@@ -51,7 +51,7 @@ func resolveRecipient(
 			candidates = append(candidates, recipientFromUser(user))
 		}
 	case "group":
-		groups, err := client.graphClient().SearchGroups(ctx, identifier)
+		groups, err := client.Graph().SearchGroups(ctx, identifier)
 		if err != nil {
 			return spaceRecipient{}, err
 		}

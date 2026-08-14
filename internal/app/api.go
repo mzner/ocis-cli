@@ -9,7 +9,9 @@ import (
 	"time"
 
 	adminapp "github.com/mzner/ocis-cli/internal/app/admin"
+	filesystemapp "github.com/mzner/ocis-cli/internal/app/filesystem"
 	shareapp "github.com/mzner/ocis-cli/internal/app/share"
+	spacesapp "github.com/mzner/ocis-cli/internal/app/spaces"
 	syncapp "github.com/mzner/ocis-cli/internal/app/sync"
 	"github.com/mzner/ocis-cli/internal/apperror"
 	"github.com/mzner/ocis-cli/internal/graph"
@@ -551,7 +553,7 @@ func RunAuthWithOptions(ctx context.Context, request AuthRequest, selectedProfil
 func RunFilesystemWithOptions(ctx context.Context, request FilesystemRequest, selectedProfile string, options RunOptions) error {
 	return classifyProtocolError(
 		string(request.Operation),
-		runFilesystem(ctx, request, selectedProfile, options.normalized()),
+		filesystemapp.Run(ctx, toFilesystemRequest(request), selectedProfile, filesystemOptions(options.normalized())),
 	)
 }
 
@@ -563,7 +565,7 @@ func RunBatchWithOptions(
 	options RunOptions,
 ) error {
 	return classifyProtocolError(
-		"batch", runBatch(ctx, request, selectedProfile, options.normalized()),
+		"batch", filesystemapp.RunBatch(ctx, toBatchRequest(request), selectedProfile, filesystemOptions(options.normalized())),
 	)
 }
 
@@ -625,7 +627,7 @@ func RunMetadataWithOptions(
 ) error {
 	return classifyProtocolError(
 		string(request.Operation),
-		runMetadata(ctx, request, selectedProfile, options.normalized()),
+		filesystemapp.RunMetadata(ctx, toMetadataRequest(request), selectedProfile, filesystemOptions(options.normalized())),
 	)
 }
 
@@ -790,9 +792,7 @@ func RunSpaceCreateWithOptions(
 	options RunOptions,
 ) error {
 	return classifyProtocolError(
-		"create", runSpaceCreate(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		"create", spacesapp.RunCreate(ctx, toSpaceCreateRequest(request), selectedProfile, spacesOptions(options.normalized())),
 	)
 }
 
@@ -804,9 +804,7 @@ func RunSpaceUpdateWithOptions(
 	options RunOptions,
 ) error {
 	return classifyProtocolError(
-		"update", runSpaceUpdate(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		"update", spacesapp.RunUpdate(ctx, toSpaceUpdateRequest(request), selectedProfile, spacesOptions(options.normalized())),
 	)
 }
 
@@ -819,7 +817,7 @@ func RunSpaceLifecycleWithOptions(
 ) error {
 	return classifyProtocolError(
 		string(request.Operation),
-		runSpaceLifecycle(ctx, request, selectedProfile, options.normalized()),
+		spacesapp.RunLifecycle(ctx, toSpaceLifecycleRequest(request), selectedProfile, spacesOptions(options.normalized())),
 	)
 }
 
@@ -832,7 +830,7 @@ func RunSpaceMemberWithOptions(
 ) error {
 	return classifyProtocolError(
 		"member "+string(request.Operation),
-		runSpaceMember(ctx, request, selectedProfile, options.normalized()),
+		spacesapp.RunMember(ctx, toSpaceMemberRequest(request), selectedProfile, spacesOptions(options.normalized())),
 	)
 }
 

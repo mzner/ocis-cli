@@ -1,4 +1,4 @@
-package app
+package spaces
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"github.com/mzner/ocis-cli/internal/apperror"
 )
 
-func runSpaceLifecycle(
+func RunLifecycle(
 	ctx context.Context,
-	request SpaceLifecycleRequest,
+	request LifecycleRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	options.Logger.Debug(
 		"run space lifecycle operation", "operation", request.Operation,
@@ -25,11 +25,11 @@ func runSpaceLifecycle(
 		)
 	}
 	switch request.Operation {
-	case SpaceDisable:
+	case Disable:
 		return disableSpace(ctx, request, selectedProfile, options)
-	case SpaceRestore:
+	case Restore:
 		return restoreSpace(ctx, request, selectedProfile, options)
-	case SpaceDelete:
+	case Delete:
 		if !request.Permanent {
 			return apperror.Wrap(
 				apperror.KindUsage, "space delete",
@@ -49,9 +49,9 @@ func runSpaceLifecycle(
 
 func disableSpace(
 	ctx context.Context,
-	request SpaceLifecycleRequest,
+	request LifecycleRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	client, selected, err := resolveProjectSpace(
 		ctx, request.Identifier, selectedProfile, options,
@@ -69,20 +69,14 @@ func disableSpace(
 			"Would disable project space %s (%s)\n", selected.Name, selected.ID,
 		)
 	}
-	if err := client.graphClient().DeleteDrive(ctx, selected.ID, false); err != nil {
+	if err := client.Graph().DeleteDrive(ctx, selected.ID, false); err != nil {
 		return err
 	}
-	profile := client.store.Profiles[client.name]
-	if profile.DefaultSpace == selected.ID {
-		profile.DefaultSpace = ""
-		profile.DefaultSpaceOwner = ""
-		client.store.Profiles[client.name] = profile
-		if err := saveStore(options.Dependencies, client.store); err != nil {
-			return fmt.Errorf(
-				"space was disabled but default-space configuration could not be cleared: %w",
-				err,
-			)
-		}
+	if err := client.ClearDefaultSpace(selected.ID); err != nil {
+		return fmt.Errorf(
+			"space was disabled but default-space configuration could not be cleared: %w",
+			err,
+		)
 	}
 	return output(
 		options, "space",
@@ -97,9 +91,9 @@ func disableSpace(
 
 func restoreSpace(
 	ctx context.Context,
-	request SpaceLifecycleRequest,
+	request LifecycleRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	if request.DryRun {
 		return output(
@@ -110,11 +104,11 @@ func restoreSpace(
 			"Would restore project space %s\n", request.Identifier,
 		)
 	}
-	client, err := newClientWithOptions(ctx, selectedProfile, options)
+	client, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
-	restored, err := client.graphClient().RestoreDrive(ctx, request.Identifier)
+	restored, err := client.Graph().RestoreDrive(ctx, request.Identifier)
 	if err != nil {
 		return err
 	}
@@ -126,9 +120,9 @@ func restoreSpace(
 
 func permanentlyDeleteSpace(
 	ctx context.Context,
-	request SpaceLifecycleRequest,
+	request LifecycleRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	if request.DryRun {
 		return output(
@@ -141,11 +135,11 @@ func permanentlyDeleteSpace(
 			request.Identifier,
 		)
 	}
-	client, err := newClientWithOptions(ctx, selectedProfile, options)
+	client, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
-	if err := client.graphClient().DeleteDrive(
+	if err := client.Graph().DeleteDrive(
 		ctx, request.Identifier, true,
 	); err != nil {
 		return err

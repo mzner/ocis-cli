@@ -1,4 +1,4 @@
-package app
+package filesystem
 
 import (
 	"fmt"
@@ -10,10 +10,10 @@ import (
 )
 
 func touchFilesystem(
-	client *client, request FilesystemRequest, options RunOptions,
+	client Client, request Request, options Options,
 ) error {
 	target := cleanRemote(request.Source)
-	meta, err := client.stat(target)
+	meta, err := client.Stat(target)
 	switch {
 	case err == nil:
 		return existingTouchResult(options, target, meta)
@@ -27,8 +27,8 @@ func touchFilesystem(
 	}
 	defer func() { _ = os.Remove(temporary) }()
 
-	err = client.davClient().UploadWithOptions(
-		client.context(), temporary, target,
+	err = client.Upload(
+		client.Context(), temporary, target,
 		webdav.TransferOptions{NoClobber: true},
 	)
 	if err != nil {
@@ -36,14 +36,14 @@ func touchFilesystem(
 		if status != http.StatusConflict && status != http.StatusPreconditionFailed {
 			return err
 		}
-		meta, statErr := client.stat(target)
+		meta, statErr := client.Stat(target)
 		if statErr != nil {
 			return err
 		}
 		return existingTouchResult(options, target, meta)
 	}
 
-	meta, err = client.stat(target)
+	meta, err = client.Stat(target)
 	if err != nil {
 		return fmt.Errorf("verify touched file %s: %w", target, err)
 	}
@@ -69,7 +69,7 @@ func createEmptyTemporaryFile() (string, error) {
 	return name, nil
 }
 
-func existingTouchResult(options RunOptions, target string, meta item) error {
+func existingTouchResult(options Options, target string, meta webdav.Item) error {
 	if meta.Type != "file" {
 		return apperror.Wrap(
 			apperror.KindConflict, "touch",
@@ -79,7 +79,7 @@ func existingTouchResult(options RunOptions, target string, meta item) error {
 	return touchResult(options, target, false)
 }
 
-func touchResult(options RunOptions, target string, created bool) error {
+func touchResult(options Options, target string, created bool) error {
 	value := map[string]any{
 		"path": target, "created": created, "unchanged": !created,
 	}
