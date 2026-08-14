@@ -1,4 +1,4 @@
-package app
+package sync
 
 import (
 	"context"
@@ -38,33 +38,33 @@ type syncResult struct {
 }
 
 type preparedSyncRequest struct {
-	request    SyncRequest
+	request    Request
 	direction  syncmodel.Direction
 	localRoot  string
 	remoteRoot string
 }
 
-func runSync(
+func Run(
 	ctx context.Context,
-	request SyncRequest,
+	request Request,
 	selected string,
-	options RunOptions,
+	options Options,
 ) error {
 	prepared, err := prepareSyncRequest(request)
 	if err != nil {
 		return err
 	}
-	client, err := newClientWithOptions(ctx, selected, options)
+	client, err := options.NewClient(ctx, selected)
 	if err != nil {
 		return err
 	}
-	if err := client.selectSpace(options.Space); err != nil {
+	if err := client.SelectSpace(options.Space); err != nil {
 		return err
 	}
 	return runPreparedSync(ctx, prepared, client, options)
 }
 
-func prepareSyncRequest(request SyncRequest) (preparedSyncRequest, error) {
+func prepareSyncRequest(request Request) (preparedSyncRequest, error) {
 	direction, err := validateSyncRequest(request)
 	if err != nil {
 		return preparedSyncRequest{}, apperror.Wrap(
@@ -95,8 +95,8 @@ func prepareSyncRequest(request SyncRequest) (preparedSyncRequest, error) {
 func runPreparedSync(
 	ctx context.Context,
 	prepared preparedSyncRequest,
-	client *client,
-	options RunOptions,
+	client Client,
+	options Options,
 ) error {
 	if prepared.direction == syncmodel.Bidirectional {
 		return runPreparedBidirectionalSync(ctx, prepared, client, options)
@@ -105,18 +105,18 @@ func runPreparedSync(
 	direction := prepared.direction
 	localRoot := prepared.localRoot
 	remoteRoot := prepared.remoteRoot
-	accountID := profileIdentity(client.profile)
+	accountID := client.AccountID()
 	if accountID == "" {
 		return errors.New("cannot bind sync state to an unauthenticated account")
 	}
 	binding := syncmodel.Binding{
-		Profile: client.name, AccountID: accountID,
-		SpaceID: client.selectedSpaceID(), Direction: direction,
+		Profile: client.ProfileName(), AccountID: accountID,
+		SpaceID: client.SelectedSpaceID(), Direction: direction,
 		LocalRoot: localRoot, RemoteRoot: remoteRoot,
 		Includes: request.Includes, Excludes: request.Excludes,
 	}
 	stateKey := binding.Key()
-	previous, found, err := options.Dependencies.SyncStates.Load(stateKey)
+	previous, found, err := options.SyncStates.Load(stateKey)
 	if err != nil {
 		return fmt.Errorf("load sync state: %w", err)
 	}
@@ -181,7 +181,7 @@ func runPreparedSync(
 		return err
 	}
 	state := syncmodel.NewState(binding, postSource, postDestination)
-	if err := options.Dependencies.SyncStates.Save(stateKey, state); err != nil {
+	if err := options.SyncStates.Save(stateKey, state); err != nil {
 		return fmt.Errorf("save sync state: %w", err)
 	}
 	result.Applied = true
@@ -189,15 +189,15 @@ func runPreparedSync(
 }
 
 func validateSyncRequest(
-	request SyncRequest,
+	request Request,
 ) (syncmodel.Direction, error) {
 	var direction syncmodel.Direction
 	switch request.Direction {
-	case SyncPush:
+	case Push:
 		direction = syncmodel.Push
-	case SyncPull:
+	case Pull:
 		direction = syncmodel.Pull
-	case SyncBidirectional:
+	case Bidirectional:
 		direction = syncmodel.Bidirectional
 	default:
 		return "", fmt.Errorf("unknown sync direction %q", request.Direction)
@@ -243,7 +243,7 @@ func validateSyncRequest(
 
 func collectSyncSnapshots(
 	ctx context.Context,
-	client *client,
+	client Client,
 	direction syncmodel.Direction,
 	localRoot, remoteRoot string,
 	maxEntries int,
@@ -345,12 +345,12 @@ func snapshotLocal(
 
 func snapshotRemote(
 	ctx context.Context,
-	client *client,
+	client Client,
 	root string,
 	allowMissing bool,
 	maxEntries int,
 ) (syncmodel.Snapshot, error) {
-	rootItem, err := client.stat(root)
+	rootItem, err := client.Stat(root)
 	if webdav.StatusCode(err) == 404 && allowMissing {
 		return syncmodel.Snapshot{}, nil
 	}
@@ -368,7 +368,7 @@ func snapshotRemote(
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		children, err := client.list(remote)
+		children, err := client.List(remote)
 		if err != nil {
 			return err
 		}
@@ -402,7 +402,7 @@ func snapshotRemote(
 	return result, nil
 }
 
-func remoteSyncEntry(relative string, value item) syncmodel.Entry {
+func remoteSyncEntry(relative string, value webdav.Item) syncmodel.Entry {
 	checksum := ""
 	for _, candidate := range value.Checksums {
 		if strings.EqualFold(candidate.Algorithm, "SHA1") {
@@ -422,15 +422,15 @@ func remoteSyncEntry(relative string, value item) syncmodel.Entry {
 
 func applySyncPlan(
 	ctx context.Context,
-	client *client,
+	client Client,
 	direction syncmodel.Direction,
 	localRoot, remoteRoot string,
 	plan syncmodel.Plan,
-	options RunOptions,
+	options Options,
 ) error {
 	uploadCapabilities := webdav.TUSCapabilities{}
 	if direction == syncmodel.Push {
-		uploadCapabilities = discoverUploadCapabilities(ctx, client)
+		uploadCapabilities = client.DiscoverUploadCapabilities(ctx)
 	}
 	for _, action := range plan.Actions {
 		if err := ctx.Err(); err != nil {
@@ -455,12 +455,12 @@ func applySyncPlan(
 }
 
 func applySyncAction(
-	client *client,
+	client Client,
 	direction syncmodel.Direction,
 	localRoot, remoteRoot string,
 	action syncmodel.Action,
 	uploadCapabilities webdav.TUSCapabilities,
-	options RunOptions,
+	options Options,
 ) error {
 	local, err := syncLocalPath(localRoot, action.Path)
 	if err != nil {
@@ -493,8 +493,8 @@ func applySyncAction(
 			return err
 		}
 		if action.Replace {
-			if err := client.davClient().RemoveWithOptions(
-				client.context(), remote, webdav.RemoveOptions{
+			if err := client.DAV().RemoveWithOptions(
+				client.Context(), remote, webdav.RemoveOptions{
 					Recursive:    true,
 					ExpectedETag: syncExpectedETag(action.Destination),
 				},
@@ -504,17 +504,17 @@ func applySyncAction(
 		}
 		switch action.Action {
 		case syncmodel.ActionDelete:
-			return client.davClient().RemoveWithOptions(
-				client.context(), remote, webdav.RemoveOptions{
+			return client.DAV().RemoveWithOptions(
+				client.Context(), remote, webdav.RemoveOptions{
 					Recursive:    true,
 					ExpectedETag: syncExpectedETag(action.Destination),
 				},
 			)
 		case syncmodel.ActionCreateDirectory:
-			return client.ensureCollection(remote)
+			return client.EnsureCollection(remote)
 		case syncmodel.ActionTransfer:
-			return client.davClient().UploadWithOptions(
-				client.context(), localSource, remote,
+			return client.DAV().UploadWithOptions(
+				client.Context(), localSource, remote,
 				webdav.TransferOptions{
 					NoClobber: action.Destination.Type == "",
 					Verify:    true, TUS: uploadCapabilities,
@@ -541,8 +541,8 @@ func applySyncAction(
 		if err := os.MkdirAll(filepath.Dir(local), 0750); err != nil {
 			return err
 		}
-		return client.davClient().DownloadWithOptions(
-			client.context(), remoteSource, local,
+		return client.DAV().DownloadWithOptions(
+			client.Context(), remoteSource, local,
 			webdav.TransferOptions{
 				NoClobber: action.Destination.Type == "",
 				Resume:    true, Verify: true,
@@ -555,7 +555,7 @@ func applySyncAction(
 }
 
 func applySyncCopy(
-	client *client,
+	client Client,
 	direction syncmodel.Direction,
 	localSource string,
 	remoteSource string,
@@ -577,8 +577,8 @@ func applySyncCopy(
 		); err != nil {
 			return err
 		}
-		return client.davClient().CopyWithOptions(
-			client.context(), remoteSource, remoteDestination,
+		return client.DAV().CopyWithOptions(
+			client.Context(), remoteSource, remoteDestination,
 			webdav.MoveOptions{
 				ExpectedETag: syncExpectedETag(action.Source),
 			},
@@ -630,7 +630,7 @@ func copyLocalSyncFile(source, destination string) error {
 }
 
 func applySyncMove(
-	client *client,
+	client Client,
 	direction syncmodel.Direction,
 	localRoot string,
 	remoteRoot string,
@@ -653,8 +653,8 @@ func applySyncMove(
 		); err != nil {
 			return err
 		}
-		return client.davClient().MoveWithOptions(
-			client.context(), remoteSource, remoteDestination,
+		return client.DAV().MoveWithOptions(
+			client.Context(), remoteSource, remoteDestination,
 			webdav.MoveOptions{
 				ExpectedETag: syncExpectedETag(action.Destination),
 			},
@@ -681,7 +681,7 @@ func applySyncMove(
 }
 
 func verifyRemoteSyncPrecondition(
-	client *client,
+	client Client,
 	remote string,
 	expected syncmodel.Entry,
 ) error {
@@ -691,7 +691,7 @@ func verifyRemoteSyncPrecondition(
 }
 
 func verifyRemoteSyncSourcePrecondition(
-	client *client,
+	client Client,
 	remote string,
 	expected syncmodel.Entry,
 ) error {
@@ -699,12 +699,12 @@ func verifyRemoteSyncSourcePrecondition(
 }
 
 func verifyRemoteSyncEntry(
-	client *client,
+	client Client,
 	remote string,
 	expected syncmodel.Entry,
 	role string,
 ) error {
-	current, err := client.stat(remote)
+	current, err := client.Stat(remote)
 	if webdav.StatusCode(err) == 404 && expected.Type == "" {
 		return nil
 	}
@@ -862,7 +862,7 @@ func syncConflict(plan syncmodel.Plan) error {
 	)
 }
 
-func writeSyncResult(options RunOptions, result syncResult) error {
+func writeSyncResult(options Options, result syncResult) error {
 	if options.OutputMode != appoutput.Human {
 		return writeOutput(options, "sync-plan", result)
 	}

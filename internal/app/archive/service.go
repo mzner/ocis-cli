@@ -1,9 +1,13 @@
-package app
+// Package archive contains the archive-download application domain. It
+// depends on a narrow authenticated client port instead of the parent app
+// package, so archive policy cannot reach unrelated application helpers.
+package archive
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -18,8 +22,41 @@ import (
 	appoutput "github.com/mzner/ocis-cli/internal/output"
 	"github.com/mzner/ocis-cli/internal/sharing"
 	"github.com/mzner/ocis-cli/internal/transfer"
+	"github.com/mzner/ocis-cli/internal/webdav"
 	"golang.org/x/term"
 )
+
+// Request describes one server-side archive download.
+type Request struct {
+	Paths       []string
+	Destination string
+	Format      string
+	Overwrite   bool
+	DryRun      bool
+}
+
+// Client is the authenticated server functionality used by this domain.
+type Client interface {
+	SelectSpace(string) error
+	Capabilities(context.Context) (sharing.Capabilities, error)
+	Stat(string) (webdav.Item, error)
+	List(string) ([]webdav.Item, error)
+	Archiver(string) (*archiveclient.Client, error)
+}
+
+// ClientFactory creates an account-bound client without exposing application
+// runtime internals to this domain.
+type ClientFactory func(context.Context, string) (Client, error)
+
+// Options contains the process-boundary values used by archive operations.
+type Options struct {
+	OutputMode appoutput.Mode
+	Out        io.Writer
+	Err        io.Writer
+	Quiet      bool
+	Space      string
+	NewClient  ClientFactory
+}
 
 // ArchiveFormat reports one usable format and the limits shared by the
 // selected archive service.
@@ -50,10 +87,11 @@ type ArchiveResult struct {
 	DryRun       bool              `json:"dryRun,omitempty"`
 }
 
-func runArchiveFormats(
-	ctx context.Context, selectedProfile string, options RunOptions,
+// RunFormats lists the preferred enabled archive service's formats.
+func RunFormats(
+	ctx context.Context, selectedProfile string, options Options,
 ) error {
-	client, err := newClientWithOptions(ctx, selectedProfile, options)
+	client, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
@@ -82,11 +120,12 @@ func runArchiveFormats(
 	return writer.Flush()
 }
 
-func runArchiveDownload(
+// RunDownload preflights and downloads one server-created archive.
+func RunDownload(
 	ctx context.Context,
-	request ArchiveDownloadRequest,
+	request Request,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	if len(request.Paths) == 0 {
 		return archiveUsage("select at least one remote path")
@@ -111,11 +150,11 @@ func runArchiveDownload(
 		return err
 	}
 
-	client, err := newClientWithOptions(ctx, selectedProfile, options)
+	client, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
-	if err := client.selectSpace(options.Space); err != nil {
+	if err := client.SelectSpace(options.Space); err != nil {
 		return err
 	}
 	capability, err := discoverArchiver(ctx, client)
@@ -142,7 +181,7 @@ func runArchiveDownload(
 		return writeArchiveResult(result, options)
 	}
 
-	protocol, err := client.archiverClient(capability.URL)
+	protocol, err := client.Archiver(capability.URL)
 	if err != nil {
 		return fmt.Errorf("configure archive download: %w", err)
 	}
@@ -200,18 +239,19 @@ func runArchiveDownload(
 }
 
 func discoverArchiver(
-	ctx context.Context, client *client,
+	ctx context.Context, client Client,
 ) (sharing.ArchiverCapabilities, error) {
-	capabilities, err := client.sharingClient().Capabilities(ctx)
+	capabilities, err := client.Capabilities(ctx)
 	if err != nil {
 		return sharing.ArchiverCapabilities{}, fmt.Errorf(
 			"discover archive service: %w", err,
 		)
 	}
-	return selectArchiver(capabilities.Files.Archivers)
+	return SelectCapabilities(capabilities.Files.Archivers)
 }
 
-func selectArchiver(
+// SelectCapabilities chooses the highest enabled usable archive capability.
+func SelectCapabilities(
 	capabilities []sharing.ArchiverCapabilities,
 ) (sharing.ArchiverCapabilities, error) {
 	var selected *sharing.ArchiverCapabilities
@@ -236,12 +276,12 @@ func selectArchiver(
 }
 
 func addArchiveResource(
-	client *client,
+	client Client,
 	remote string,
 	capability sharing.ArchiverCapabilities,
 	result *ArchiveResult,
 ) error {
-	root, err := client.stat(remote)
+	root, err := client.Stat(remote)
 	if err != nil {
 		return err
 	}
@@ -266,8 +306,8 @@ func addArchiveResource(
 }
 
 func scanArchiveItem(
-	client *client,
-	value item,
+	client Client,
+	value webdav.Item,
 	include bool,
 	capability sharing.ArchiverCapabilities,
 	result *ArchiveResult,
@@ -299,7 +339,7 @@ func scanArchiveItem(
 	if value.Type != "directory" {
 		return nil
 	}
-	children, err := client.list(value.Path)
+	children, err := client.List(value.Path)
 	if err != nil {
 		return err
 	}
@@ -453,7 +493,7 @@ func archiveResourceIDs(values []ArchiveResource) []string {
 }
 
 func archiveProgressReporter(
-	options RunOptions, destination string,
+	options Options, destination string,
 ) (func(int64), func(int64)) {
 	if options.Quiet || options.OutputMode != appoutput.Human {
 		return nil, func(int64) {}
@@ -488,8 +528,9 @@ func archiveProgressReporter(
 	return update, finish
 }
 
-func archiverCapabilityDetail(capabilities sharing.Capabilities) string {
-	selected, err := selectArchiver(capabilities.Files.Archivers)
+// CapabilityDetail describes the preferred capability for diagnostics.
+func CapabilityDetail(capabilities sharing.Capabilities) string {
+	selected, err := SelectCapabilities(capabilities.Files.Archivers)
 	if err != nil {
 		return "not advertised"
 	}
@@ -510,7 +551,7 @@ func archiverCapabilityDetail(capabilities sharing.Capabilities) string {
 	return strings.Join(details, "; ")
 }
 
-func writeArchiveResult(result ArchiveResult, options RunOptions) error {
+func writeArchiveResult(result ArchiveResult, options Options) error {
 	if options.OutputMode != appoutput.Human {
 		return writeOutput(options, "archive", result)
 	}
@@ -530,6 +571,20 @@ func writeArchiveResult(result ArchiveResult, options RunOptions) error {
 		result.Format, result.ArchiveBytes,
 	)
 	return err
+}
+
+func writeOutput(options Options, kind string, value any) error {
+	return (appoutput.Renderer{
+		Writer: options.Out, Mode: options.OutputMode, Type: kind,
+	}).Write(value, "")
+}
+
+func cleanRemote(remote string) string {
+	remote = strings.TrimSpace(remote)
+	if remote == "" || remote == "/" {
+		return "/"
+	}
+	return "/" + strings.Trim(remote, "/")
 }
 
 func archiveUsage(message string) error {

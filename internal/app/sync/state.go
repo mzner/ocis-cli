@@ -1,4 +1,4 @@
-package app
+package sync
 
 import (
 	"context"
@@ -46,18 +46,18 @@ type syncStateRemoval struct {
 	DryRun  bool   `json:"dryRun"`
 }
 
-func runSyncState(
+func RunState(
 	ctx context.Context,
-	request SyncStateRequest,
-	options RunOptions,
+	request StateRequest,
+	options Options,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	switch request.Operation {
-	case SyncStateList:
+	case StateList:
 		return listSyncStates(request.Profile, options)
-	case SyncStateShow:
+	case StateShow:
 		key, state, err := resolveAndLoadSyncState(request.ID, options)
 		if err != nil {
 			return err
@@ -65,7 +65,7 @@ func runSyncState(
 		return writeSyncStateSummary(
 			options, syncStateSummaryFor(key, state, nil),
 		)
-	case SyncStateExport:
+	case StateExport:
 		if options.OutputMode != appoutput.Human {
 			return apperror.Wrap(
 				apperror.KindUsage, "sync state export",
@@ -79,7 +79,7 @@ func runSyncState(
 			return err
 		}
 		return exportSyncState(options.Out, key, state)
-	case SyncStateRemove:
+	case StateRemove:
 		return removeSyncState(request, options)
 	default:
 		return apperror.Wrap(
@@ -89,14 +89,14 @@ func runSyncState(
 	}
 }
 
-func listSyncStates(profile string, options RunOptions) error {
-	keys, err := options.Dependencies.SyncStates.Keys()
+func listSyncStates(profile string, options Options) error {
+	keys, err := options.SyncStates.Keys()
 	if err != nil {
 		return fmt.Errorf("list sync state: %w", err)
 	}
 	summaries := make([]syncStateSummary, 0, len(keys))
 	for _, key := range keys {
-		state, found, loadErr := options.Dependencies.SyncStates.Load(key)
+		state, found, loadErr := options.SyncStates.Load(key)
 		if !found && loadErr == nil {
 			continue
 		}
@@ -142,7 +142,7 @@ func listSyncStates(profile string, options RunOptions) error {
 }
 
 func writeSyncStateSummary(
-	options RunOptions,
+	options Options,
 	summary syncStateSummary,
 ) error {
 	if options.OutputMode != appoutput.Human {
@@ -193,8 +193,8 @@ func exportSyncState(
 }
 
 func removeSyncState(
-	request SyncStateRequest,
-	options RunOptions,
+	request StateRequest,
+	options Options,
 ) error {
 	if !request.Confirmed && !request.DryRun {
 		return apperror.Wrap(
@@ -208,7 +208,7 @@ func removeSyncState(
 	}
 	result := syncStateRemoval{ID: key, DryRun: request.DryRun}
 	if !request.DryRun {
-		removed, err := options.Dependencies.SyncStates.Delete(key)
+		removed, err := options.SyncStates.Delete(key)
 		if err != nil {
 			return fmt.Errorf("remove sync state: %w", err)
 		}
@@ -229,13 +229,13 @@ func removeSyncState(
 
 func resolveAndLoadSyncState(
 	query string,
-	options RunOptions,
+	options Options,
 ) (string, syncmodel.State, error) {
 	key, err := resolveSyncStateID(query, options)
 	if err != nil {
 		return "", syncmodel.State{}, err
 	}
-	state, found, err := options.Dependencies.SyncStates.Load(key)
+	state, found, err := options.SyncStates.Load(key)
 	if err != nil {
 		return "", syncmodel.State{}, fmt.Errorf(
 			"sync state %s is unreadable: %w; remove it with "+
@@ -258,7 +258,7 @@ func resolveAndLoadSyncState(
 
 func resolveSyncStateID(
 	query string,
-	options RunOptions,
+	options Options,
 ) (string, error) {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if len(query) < syncStateIDMinimumPrefix ||
@@ -271,7 +271,7 @@ func resolveSyncStateID(
 			),
 		)
 	}
-	keys, err := options.Dependencies.SyncStates.Keys()
+	keys, err := options.SyncStates.Keys()
 	if err != nil {
 		return "", fmt.Errorf("list sync state: %w", err)
 	}

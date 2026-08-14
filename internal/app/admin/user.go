@@ -1,4 +1,4 @@
-package app
+package admin
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"github.com/mzner/ocis-cli/internal/graph"
 )
 
-func runAdminUserCreate(
+func RunUserCreate(
 	ctx context.Context,
-	request AdminUserCreateRequest,
+	request UserCreateRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.Username = strings.TrimSpace(request.Username)
 	request.DisplayName = strings.TrimSpace(request.DisplayName)
@@ -35,13 +35,14 @@ func runAdminUserCreate(
 		"passwordProvided": request.Password != "",
 		"dryRun":           request.DryRun,
 	}
-	selected, err := newAdminMutationClient(
-		ctx, selectedProfile, options,
-	)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
-	if capabilities, ok := adminCapabilities(ctx, selected); ok &&
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
+		return err
+	}
+	if capabilities, ok := adminCapabilities(ctx, selected, options); ok &&
 		capabilities.Graph.Users.CreateDisabled {
 		return fmt.Errorf(
 			"server advertises user creation as disabled for its identity backend",
@@ -63,7 +64,7 @@ func runAdminUserCreate(
 		enabled := false
 		create.AccountEnabled = &enabled
 	}
-	created, err := selected.graphClient().CreateUser(ctx, create)
+	created, err := selected.Graph().CreateUser(ctx, create)
 	if err != nil {
 		return adminMutationError("user", err)
 	}
@@ -74,11 +75,11 @@ func runAdminUserCreate(
 	)
 }
 
-func runAdminUserUpdate(
+func RunUserUpdate(
 	ctx context.Context,
-	request AdminUserUpdateRequest,
+	request UserUpdateRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.Identifier = strings.TrimSpace(request.Identifier)
 	if request.Identifier == "" {
@@ -87,7 +88,7 @@ func runAdminUserUpdate(
 			fmt.Errorf("user identifier is required"),
 		)
 	}
-	fields := selectedUserUpdateFields(request)
+	fields := SelectedUserUpdateFields(request)
 	if len(fields) == 0 {
 		return apperror.Wrap(
 			apperror.KindUsage, "admin user update",
@@ -100,17 +101,18 @@ func runAdminUserUpdate(
 			fmt.Errorf("replacement password cannot be empty"),
 		)
 	}
-	selected, err := newAdminMutationClient(
-		ctx, selectedProfile, options,
-	)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
+		return err
+	}
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
 		return err
 	}
 	user, err := resolveMutationUser(ctx, selected, request.Identifier)
 	if err != nil {
 		return err
 	}
-	if capabilities, ok := adminCapabilities(ctx, selected); ok {
+	if capabilities, ok := adminCapabilities(ctx, selected, options); ok {
 		if err := requireWritableUserFields(capabilities, fields...); err != nil {
 			return err
 		}
@@ -136,7 +138,7 @@ func runAdminUserUpdate(
 	if request.SetPassword {
 		update.Password = &graph.PasswordProfile{Password: request.Password}
 	}
-	updated, err := selected.graphClient().UpdateUser(
+	updated, err := selected.Graph().UpdateUser(
 		ctx, user.ID, update,
 	)
 	if err != nil {
@@ -149,11 +151,11 @@ func runAdminUserUpdate(
 	)
 }
 
-func runAdminUserState(
+func RunUserState(
 	ctx context.Context,
-	request AdminUserStateRequest,
+	request UserStateRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.Identifier = strings.TrimSpace(request.Identifier)
 	if request.Identifier == "" {
@@ -162,10 +164,11 @@ func runAdminUserState(
 			fmt.Errorf("user identifier is required"),
 		)
 	}
-	selected, err := newAdminMutationClient(
-		ctx, selectedProfile, options,
-	)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
+		return err
+	}
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
 		return err
 	}
 	user, err := resolveMutationUser(ctx, selected, request.Identifier)
@@ -179,7 +182,7 @@ func runAdminUserState(
 			return err
 		}
 	}
-	if capabilities, ok := adminCapabilities(ctx, selected); ok {
+	if capabilities, ok := adminCapabilities(ctx, selected, options); ok {
 		if err := requireWritableUserFields(
 			capabilities, "user.accountEnabled",
 		); err != nil {
@@ -197,7 +200,7 @@ func runAdminUserState(
 			action, fallback(user.Username, user.DisplayName), user.ID,
 		)
 	}
-	updated, err := selected.graphClient().UpdateUser(
+	updated, err := selected.Graph().UpdateUser(
 		ctx, user.ID,
 		graph.UpdateUserRequest{AccountEnabled: &request.Enabled},
 	)
@@ -212,11 +215,11 @@ func runAdminUserState(
 	)
 }
 
-func runAdminUserDelete(
+func RunUserDelete(
 	ctx context.Context,
-	request AdminUserDeleteRequest,
+	request UserDeleteRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.Identifier = strings.TrimSpace(request.Identifier)
 	if request.Identifier == "" {
@@ -225,10 +228,11 @@ func runAdminUserDelete(
 			fmt.Errorf("user identifier is required"),
 		)
 	}
-	selected, err := newAdminMutationClient(
-		ctx, selectedProfile, options,
-	)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
+		return err
+	}
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
 		return err
 	}
 	user, err := resolveMutationUser(ctx, selected, request.Identifier)
@@ -238,7 +242,7 @@ func runAdminUserDelete(
 	if err := rejectSelfTarget(ctx, selected, user, "delete"); err != nil {
 		return err
 	}
-	if capabilities, ok := adminCapabilities(ctx, selected); ok &&
+	if capabilities, ok := adminCapabilities(ctx, selected, options); ok &&
 		capabilities.Graph.Users.DeleteDisabled {
 		return fmt.Errorf(
 			"server advertises user deletion as disabled for its identity backend",
@@ -255,7 +259,7 @@ func runAdminUserDelete(
 			fallback(user.Username, user.DisplayName), user.ID,
 		)
 	}
-	if err := selected.graphClient().DeleteUser(ctx, user.ID); err != nil {
+	if err := selected.Graph().DeleteUser(ctx, user.ID); err != nil {
 		return adminMutationError("user", err)
 	}
 	return output(
@@ -269,7 +273,7 @@ func runAdminUserDelete(
 	)
 }
 
-func selectedUserUpdateFields(request AdminUserUpdateRequest) []string {
+func SelectedUserUpdateFields(request UserUpdateRequest) []string {
 	fields := make([]string, 0, 6)
 	for _, field := range []struct {
 		value *string

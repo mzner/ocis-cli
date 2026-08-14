@@ -1,4 +1,4 @@
-package app
+package sync
 
 import (
 	"context"
@@ -17,23 +17,23 @@ import (
 func runPreparedBidirectionalSync(
 	ctx context.Context,
 	prepared preparedSyncRequest,
-	client *client,
-	options RunOptions,
+	client Client,
+	options Options,
 ) error {
 	request := prepared.request
-	accountID := profileIdentity(client.profile)
+	accountID := client.AccountID()
 	if accountID == "" {
 		return errors.New("cannot bind sync state to an unauthenticated account")
 	}
 	binding := syncmodel.Binding{
-		Profile: client.name, AccountID: accountID,
-		SpaceID:   client.selectedSpaceID(),
+		Profile: client.ProfileName(), AccountID: accountID,
+		SpaceID:   client.SelectedSpaceID(),
 		Direction: syncmodel.Bidirectional,
 		LocalRoot: prepared.localRoot, RemoteRoot: prepared.remoteRoot,
 		Includes: request.Includes, Excludes: request.Excludes,
 	}
 	stateKey := binding.Key()
-	previous, found, err := options.Dependencies.SyncStates.Load(stateKey)
+	previous, found, err := options.SyncStates.Load(stateKey)
 	if err != nil {
 		return fmt.Errorf("load sync state: %w", err)
 	}
@@ -72,7 +72,7 @@ func runPreparedBidirectionalSync(
 			)
 			journal.Status = syncrecovery.Conflict
 			journal.Failure = "automatic keep-both resolution was not safe; both trees were left unchanged"
-			if saveErr := options.Dependencies.SyncRecoveries.Save(journal); saveErr != nil {
+			if saveErr := options.SyncRecoveries.Save(journal); saveErr != nil {
 				return errors.Join(err, fmt.Errorf("save sync conflict report: %w", saveErr))
 			}
 		}
@@ -94,12 +94,12 @@ func runPreparedBidirectionalSync(
 		journal.Status = syncrecovery.Conflict
 		journal.Failure = "the plan contains unresolved conflicts"
 		journal.UpdatedAt = time.Now().UTC()
-		if err := options.Dependencies.SyncRecoveries.Save(journal); err != nil {
+		if err := options.SyncRecoveries.Save(journal); err != nil {
 			return fmt.Errorf("save sync conflict report: %w", err)
 		}
 		return bidirectionalSyncConflict(plan)
 	}
-	if err := options.Dependencies.SyncRecoveries.Save(journal); err != nil {
+	if err := options.SyncRecoveries.Save(journal); err != nil {
 		return fmt.Errorf("create sync recovery journal: %w", err)
 	}
 	if err := applyBidirectionalSyncPlan(
@@ -160,7 +160,7 @@ func runPreparedBidirectionalSync(
 		)
 	}
 	state := syncmodel.NewState(binding, postLocal, postRemote)
-	if err := options.Dependencies.SyncStates.Save(
+	if err := options.SyncStates.Save(
 		stateKey, state,
 	); err != nil {
 		_ = updateSyncRecovery(
@@ -170,7 +170,7 @@ func runPreparedBidirectionalSync(
 		)
 		return fmt.Errorf("save sync state: %w", err)
 	}
-	if _, err := options.Dependencies.SyncRecoveries.Delete(journal.ID); err != nil {
+	if _, err := options.SyncRecoveries.Delete(journal.ID); err != nil {
 		return fmt.Errorf("remove completed sync recovery journal: %w", err)
 	}
 	result.Applied = true
@@ -179,12 +179,12 @@ func runPreparedBidirectionalSync(
 
 func applyBidirectionalSyncPlan(
 	ctx context.Context,
-	client *client,
+	client Client,
 	localRoot string,
 	remoteRoot string,
 	plan syncmodel.Plan,
 	journal *syncrecovery.Journal,
-	options RunOptions,
+	options Options,
 ) error {
 	uploadCapabilities := webdav.TUSCapabilities{}
 	for _, action := range plan.Actions {
@@ -209,7 +209,7 @@ func applyBidirectionalSyncPlan(
 		current := action
 		journal.Current = &current
 		journal.UpdatedAt = time.Now().UTC()
-		if err := options.Dependencies.SyncRecoveries.Save(*journal); err != nil {
+		if err := options.SyncRecoveries.Save(*journal); err != nil {
 			return fmt.Errorf("record pending sync action: %w", err)
 		}
 		var direction syncmodel.Direction
@@ -237,7 +237,7 @@ func applyBidirectionalSyncPlan(
 		journal.Completed = append(journal.Completed, action)
 		journal.Current = nil
 		journal.UpdatedAt = time.Now().UTC()
-		if err := options.Dependencies.SyncRecoveries.Save(*journal); err != nil {
+		if err := options.SyncRecoveries.Save(*journal); err != nil {
 			return fmt.Errorf("record completed sync action: %w", err)
 		}
 	}
@@ -248,16 +248,16 @@ func updateSyncRecovery(
 	journal *syncrecovery.Journal,
 	status syncrecovery.Status,
 	failure string,
-	options RunOptions,
+	options Options,
 ) error {
 	journal.Status = status
 	journal.Failure = failure
 	journal.UpdatedAt = time.Now().UTC()
-	return options.Dependencies.SyncRecoveries.Save(*journal)
+	return options.SyncRecoveries.Save(*journal)
 }
 
 func verifyBidirectionalSourcePrecondition(
-	client *client,
+	client Client,
 	localRoot string,
 	remoteRoot string,
 	action syncmodel.Action,
@@ -331,7 +331,7 @@ func bidirectionalSyncConflict(plan syncmodel.Plan) error {
 
 func collectBidirectionalSnapshots(
 	ctx context.Context,
-	client *client,
+	client Client,
 	localRoot string,
 	remoteRoot string,
 	maxEntries int,

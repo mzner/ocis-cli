@@ -1,4 +1,4 @@
-package app
+package share
 
 import (
 	"context"
@@ -14,38 +14,39 @@ import (
 	"github.com/mzner/ocis-cli/internal/sharing"
 )
 
-func runShare(
-	ctx context.Context, request ShareRequest, selectedProfile string, options RunOptions,
+// Run validates and executes one sharing operation.
+func Run(
+	ctx context.Context, request Request, selectedProfile string, options Options,
 ) error {
 	options.Logger.Debug("run share operation", "operation", request.Operation)
-	if request.Operation == ShareCreate {
+	if request.Operation == Create {
 		if err := validateShareCreateRequest(request); err != nil {
 			return err
 		}
 	}
-	if request.Operation == ShareLinkUpdate {
+	if request.Operation == LinkUpdate {
 		if err := validatePublicLinkUpdate(request); err != nil {
 			return err
 		}
 	}
-	if request.Operation == ShareReceived {
+	if request.Operation == Received {
 		if _, _, err := receivedShareStateFilter(request.State); err != nil {
 			return err
 		}
 	}
-	if request.Operation == ShareOverview {
+	if request.Operation == Overview {
 		if err := validateShareOverviewFilters(request); err != nil {
 			return err
 		}
 	}
-	if request.Operation == ShareRemove && !request.Confirmed {
+	if request.Operation == Remove && !request.Confirmed {
 		return usageShare(
 			"removing a share requires explicit confirmation",
 		)
 	}
 	if request.DryRun {
 		switch request.Operation {
-		case ShareCreate:
+		case Create:
 			permissions := request.Permissions
 			if permissions == 0 {
 				permissions = 1
@@ -58,7 +59,7 @@ func runShare(
 				},
 				"Would create public link for %s\n", cleanRemote(request.Path),
 			)
-		case ShareRevoke:
+		case Revoke:
 			return output(
 				options, "share",
 				map[string]any{"operation": "revoke", "id": request.ID, "dryRun": true},
@@ -66,26 +67,26 @@ func runShare(
 			)
 		}
 	}
-	client, err := newClientWithOptions(ctx, selectedProfile, options)
+	client, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
 	switch request.Operation {
-	case ShareCreate, ShareList, ShareDirectAdd, ShareFederatedAdd, ShareRoles:
-		if err := client.selectSpace(options.Space); err != nil {
+	case Create, List, DirectAdd, FederatedAdd, Roles:
+		if err := client.SelectSpace(options.Space); err != nil {
 			return err
 		}
-	case ShareReceived:
+	case Received:
 		if options.Space != "" {
 			return usageShare(
 				"--space cannot filter received shares; use the optional received path",
 			)
 		}
-	case ShareOverview:
+	case Overview:
 		// An overview is cross-Space by default. Its optional --space value is
 		// a filter and must not activate or mutate the saved Space selection.
-	case ShareLinkInfo, ShareLinkUpdate, ShareDirectUpdate, ShareRemove,
-		ShareAccept, ShareDecline:
+	case LinkInfo, LinkUpdate, DirectUpdate, Remove,
+		Accept, Decline:
 		if options.Space != "" {
 			return usageShare(
 				"--space cannot filter an operation addressed by share ID",
@@ -93,37 +94,37 @@ func runShare(
 		}
 	}
 	switch request.Operation {
-	case ShareCreate:
+	case Create:
 		return createPublicLink(ctx, client, request, options)
-	case ShareList:
+	case List:
 		if request.LinksOnly {
 			return listPublicLinks(ctx, client, request, options)
 		}
 		return listOutgoingShares(ctx, client, request, options)
-	case ShareLinkInfo:
+	case LinkInfo:
 		return showPublicLink(ctx, client, request.ID, options)
-	case ShareLinkUpdate:
+	case LinkUpdate:
 		return updatePublicLink(ctx, client, request, options)
-	case ShareDirectAdd:
+	case DirectAdd:
 		return addDirectShare(ctx, client, request, options)
-	case ShareFederatedAdd:
+	case FederatedAdd:
 		return addFederatedShare(ctx, client, request, options)
-	case ShareDirectUpdate:
+	case DirectUpdate:
 		return updateDirectShare(ctx, client, request, options)
-	case ShareRemove:
+	case Remove:
 		return removeShare(ctx, client, request, options)
-	case ShareReceived:
+	case Received:
 		return listReceivedShares(ctx, client, request, options)
-	case ShareOverview:
+	case Overview:
 		return listShareOverview(ctx, client, request, options)
-	case ShareAccept, ShareDecline:
+	case Accept, Decline:
 		return respondToReceivedShare(ctx, client, request, options)
-	case ShareRoles:
+	case Roles:
 		return listShareRoles(
 			ctx, client, request.Path, request.Federated, options,
 		)
-	case ShareRevoke:
-		if err := client.sharingClient().RevokeLink(ctx, request.ID); err != nil {
+	case Revoke:
+		if err := client.Sharing().RevokeLink(ctx, request.ID); err != nil {
 			return err
 		}
 		return output(
@@ -139,7 +140,7 @@ func runShare(
 }
 
 func addDirectShare(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	request.Recipient = strings.TrimSpace(request.Recipient)
 	request.RecipientType = strings.ToLower(
@@ -154,7 +155,7 @@ func addDirectShare(
 			request.RecipientType,
 		))
 	}
-	capabilities, err := client.sharingClient().Capabilities(ctx)
+	capabilities, err := client.Sharing().Capabilities(ctx)
 	if err != nil {
 		return fmt.Errorf("check sharing capabilities: %w", err)
 	}
@@ -172,7 +173,7 @@ func addDirectShare(
 		)
 	}
 	remote := cleanRemote(request.Path)
-	metadata, err := client.stat(remote)
+	metadata, err := client.Stat(remote)
 	if err != nil {
 		return err
 	}
@@ -209,7 +210,7 @@ func addDirectShare(
 			fallback(recipient.DisplayName, recipient.ID), role.DisplayName,
 		)
 	}
-	permission, err := client.graphClient().InviteItem(
+	permission, err := client.Graph().InviteItem(
 		ctx, metadata.ResourceID,
 		graph.InviteRequest{
 			Recipients: []graph.Recipient{{
@@ -236,13 +237,13 @@ func addDirectShare(
 }
 
 func addFederatedShare(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	request.Recipient = strings.TrimSpace(request.Recipient)
 	if request.Recipient == "" {
 		return usageShare("federated recipient must not be empty")
 	}
-	capabilities, err := client.sharingClient().Capabilities(ctx)
+	capabilities, err := client.Sharing().Capabilities(ctx)
 	if err != nil {
 		return fmt.Errorf("check federation capabilities: %w", err)
 	}
@@ -253,7 +254,7 @@ func addFederatedShare(
 		)
 	}
 	remote := cleanRemote(request.Path)
-	metadata, err := client.stat(remote)
+	metadata, err := client.Stat(remote)
 	if err != nil {
 		return err
 	}
@@ -288,7 +289,7 @@ func addFederatedShare(
 			remote, fallback(recipient.DisplayName, recipient.ID), role.DisplayName,
 		)
 	}
-	permission, err := client.graphClient().InviteItem(
+	permission, err := client.Graph().InviteItem(
 		ctx, metadata.ResourceID,
 		graph.InviteRequest{
 			Recipients: []graph.Recipient{{ObjectID: recipient.ID, Type: "user"}},
@@ -312,7 +313,7 @@ func addFederatedShare(
 }
 
 func updateDirectShare(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	selected, err := resolveOutgoingShare(ctx, client, request.ID, true)
 	if err != nil {
@@ -337,7 +338,7 @@ func updateDirectShare(
 			selected.ID, selected.Path, role.DisplayName,
 		)
 	}
-	permission, err := client.graphClient().UpdateItemPermission(
+	permission, err := client.Graph().UpdateItemPermission(
 		ctx, selected.ResourceID, selected.ID,
 		graph.PermissionUpdateRequest{Roles: []string{role.ID}},
 	)
@@ -361,7 +362,7 @@ func updateDirectShare(
 }
 
 func removeShare(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	selected, err := resolveOutgoingShare(ctx, client, request.ID, false)
 	if err != nil {
@@ -380,11 +381,11 @@ func removeShare(
 		)
 	}
 	if selected.Type == "public_link" {
-		if err := client.sharingClient().RevokeLink(ctx, selected.ID); err != nil {
+		if err := client.Sharing().RevokeLink(ctx, selected.ID); err != nil {
 			return err
 		}
 	} else {
-		if err := client.graphClient().RemoveItemPermission(
+		if err := client.Graph().RemoveItemPermission(
 			ctx, selected.ResourceID, selected.ID,
 		); err != nil {
 			return err
@@ -403,11 +404,11 @@ func removeShare(
 }
 
 func listOutgoingShares(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
-	values, err := client.sharingClient().ListShares(
+	values, err := client.Sharing().ListShares(
 		ctx, sharing.ShareListRequest{
-			Path: request.Path, SpaceID: client.selectedSpaceID(),
+			Path: request.Path, SpaceID: client.SelectedSpaceID(),
 		},
 	)
 	if err != nil {
@@ -417,13 +418,13 @@ func listOutgoingShares(
 }
 
 func listReceivedShares(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	state, allStates, err := receivedShareStateFilter(request.State)
 	if err != nil {
 		return err
 	}
-	values, err := client.sharingClient().ListShares(
+	values, err := client.Sharing().ListShares(
 		ctx, sharing.ShareListRequest{
 			Path: request.Path, Received: true,
 			State: state, AllStates: allStates,
@@ -436,7 +437,7 @@ func listReceivedShares(
 }
 
 func writeShares(
-	values []sharing.Share, received bool, options RunOptions,
+	values []sharing.Share, received bool, options Options,
 ) error {
 	if options.OutputMode != appoutput.Human {
 		return writeOutput(options, "share", values)
@@ -463,7 +464,7 @@ func writeShares(
 		if _, err := fmt.Fprintf(
 			options.Out, "%-12s %-12s %-10s %-8s %-24s %s\n",
 			value.ID, value.Type, state,
-			permissionName(value.Permissions),
+			PermissionName(value.Permissions),
 			value.Path, target,
 		); err != nil {
 			return err
@@ -499,9 +500,9 @@ func receivedShareStateFilter(value string) (*int, bool, error) {
 }
 
 func respondToReceivedShare(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
-	values, err := client.sharingClient().ListShares(
+	values, err := client.Sharing().ListShares(
 		ctx, sharing.ShareListRequest{Received: true, AllStates: true},
 	)
 	if err != nil {
@@ -521,7 +522,7 @@ func respondToReceivedShare(
 		)
 	}
 	action, nextState := "accept", "accepted"
-	if request.Operation == ShareDecline {
+	if request.Operation == Decline {
 		action, nextState = "decline", "declined"
 	}
 	value := map[string]any{
@@ -536,10 +537,10 @@ func respondToReceivedShare(
 			action, selected.ID, selected.Path,
 		)
 	}
-	if request.Operation == ShareAccept {
-		err = client.sharingClient().AcceptShare(ctx, request.ID)
+	if request.Operation == Accept {
+		err = client.Sharing().AcceptShare(ctx, request.ID)
 	} else {
-		err = client.sharingClient().DeclineShare(ctx, request.ID)
+		err = client.Sharing().DeclineShare(ctx, request.ID)
 	}
 	if err != nil {
 		return err
@@ -553,13 +554,13 @@ func respondToReceivedShare(
 
 func listShareRoles(
 	ctx context.Context,
-	client *client,
+	client Client,
 	remote string,
 	federated bool,
-	options RunOptions,
+	options Options,
 ) error {
 	if federated {
-		capabilities, err := client.sharingClient().Capabilities(ctx)
+		capabilities, err := client.Sharing().Capabilities(ctx)
 		if err != nil {
 			return fmt.Errorf("check federation capabilities: %w", err)
 		}
@@ -571,7 +572,7 @@ func listShareRoles(
 		}
 	}
 	remote = cleanRemote(remote)
-	metadata, err := client.stat(remote)
+	metadata, err := client.Stat(remote)
 	if err != nil {
 		return err
 	}
@@ -582,11 +583,11 @@ func listShareRoles(
 	}
 	var permissions graph.Permissions
 	if federated {
-		permissions, err = client.graphClient().ListFederatedItemPermissions(
+		permissions, err = client.Graph().ListFederatedItemPermissions(
 			ctx, metadata.ResourceID,
 		)
 	} else {
-		permissions, err = client.graphClient().ListItemPermissions(
+		permissions, err = client.Graph().ListItemPermissions(
 			ctx, metadata.ResourceID,
 		)
 	}
@@ -608,13 +609,13 @@ func listShareRoles(
 }
 
 func resolveOutgoingShare(
-	ctx context.Context, client *client, shareID string, directOnly bool,
+	ctx context.Context, client Client, shareID string, directOnly bool,
 ) (sharing.Share, error) {
 	shareID = strings.TrimSpace(shareID)
 	if shareID == "" {
 		return sharing.Share{}, usageShare("share ID must not be empty")
 	}
-	values, err := client.sharingClient().ListShares(
+	values, err := client.Sharing().ListShares(
 		ctx, sharing.ShareListRequest{},
 	)
 	if err != nil {
@@ -653,7 +654,7 @@ func resolveOutgoingShare(
 }
 
 func resolveDirectRole(
-	ctx context.Context, client *client, resourceID string, requested string,
+	ctx context.Context, client Client, resourceID string, requested string,
 	federated bool,
 ) (graph.Permissions, graph.RoleDefinition, error) {
 	requested = strings.TrimSpace(requested)
@@ -664,11 +665,11 @@ func resolveDirectRole(
 	var permissions graph.Permissions
 	var err error
 	if federated {
-		permissions, err = client.graphClient().ListFederatedItemPermissions(
+		permissions, err = client.Graph().ListFederatedItemPermissions(
 			ctx, resourceID,
 		)
 	} else {
-		permissions, err = client.graphClient().ListItemPermissions(ctx, resourceID)
+		permissions, err = client.Graph().ListItemPermissions(ctx, resourceID)
 	}
 	if err != nil {
 		return graph.Permissions{}, graph.RoleDefinition{}, err
@@ -756,9 +757,9 @@ type directShareOutput struct {
 }
 
 func createPublicLink(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
-	capabilities, err := client.sharingClient().Capabilities(ctx)
+	capabilities, err := client.Sharing().Capabilities(ctx)
 	if err != nil {
 		return fmt.Errorf("check sharing capabilities: %w", err)
 	}
@@ -786,8 +787,8 @@ func createPublicLink(
 	if permissions == 0 {
 		permissions = 1
 	}
-	value, err := client.sharingClient().CreateLink(ctx, sharing.CreateRequest{
-		Path: request.Path, SpaceID: client.selectedSpaceID(),
+	value, err := client.Sharing().CreateLink(ctx, sharing.CreateRequest{
+		Path: request.Path, SpaceID: client.SelectedSpaceID(),
 		Name: request.Name, Password: request.Password,
 		Expiration: request.Expiration, Permissions: permissions,
 	})
@@ -800,7 +801,7 @@ func createPublicLink(
 	)
 }
 
-func validateShareCreateRequest(request ShareRequest) error {
+func validateShareCreateRequest(request Request) error {
 	if request.Expiration == "" {
 		return nil
 	}
@@ -813,7 +814,7 @@ func validateShareCreateRequest(request ShareRequest) error {
 	return nil
 }
 
-func validatePublicLinkUpdate(request ShareRequest) error {
+func validatePublicLinkUpdate(request Request) error {
 	if !request.UpdateName && !request.UpdateExpiration &&
 		!request.UpdateAccess && !request.UpdatePassword {
 		return usageShare("select at least one public-link property to update")
@@ -836,7 +837,7 @@ func validatePublicLinkUpdate(request ShareRequest) error {
 }
 
 func showPublicLink(
-	ctx context.Context, client *client, id string, options RunOptions,
+	ctx context.Context, client Client, id string, options Options,
 ) error {
 	value, err := loadPublicLink(ctx, client, id)
 	if err != nil {
@@ -846,7 +847,7 @@ func showPublicLink(
 }
 
 func updatePublicLink(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	selected, err := loadPublicLink(ctx, client, request.ID)
 	if err != nil {
@@ -888,7 +889,7 @@ func updatePublicLink(
 			changes["expiration"] = request.Expiration
 		}
 		if request.UpdateAccess {
-			changes["permissions"] = permissionName(request.Permissions)
+			changes["permissions"] = PermissionName(request.Permissions)
 		}
 		if request.UpdatePassword {
 			changes["password"] = "set"
@@ -909,14 +910,14 @@ func updatePublicLink(
 
 	passwordSet := request.UpdatePassword && !request.RemovePassword
 	if passwordSet {
-		if _, err := client.graphClient().SetItemPermissionPassword(
+		if _, err := client.Graph().SetItemPermissionPassword(
 			ctx, selected.ResourceID, selected.ID, request.Password,
 		); err != nil {
 			return err
 		}
 	}
 	if !update.Empty() {
-		if _, err := client.graphClient().UpdateLinkPermission(
+		if _, err := client.Graph().UpdateLinkPermission(
 			ctx, selected.ResourceID, selected.ID, update,
 		); err != nil {
 			if passwordSet {
@@ -929,7 +930,7 @@ func updatePublicLink(
 		}
 	}
 	if request.UpdatePassword && request.RemovePassword {
-		if _, err := client.graphClient().SetItemPermissionPassword(
+		if _, err := client.Graph().SetItemPermissionPassword(
 			ctx, selected.ResourceID, selected.ID, "",
 		); err != nil {
 			if !update.Empty() {
@@ -955,13 +956,13 @@ func updatePublicLink(
 }
 
 func loadPublicLink(
-	ctx context.Context, client *client, id string,
+	ctx context.Context, client Client, id string,
 ) (sharing.Link, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return sharing.Link{}, usageShare("share ID must not be empty")
 	}
-	value, err := client.sharingClient().GetLink(ctx, id)
+	value, err := client.Sharing().GetLink(ctx, id)
 	if err != nil {
 		return sharing.Link{}, err
 	}
@@ -970,7 +971,7 @@ func loadPublicLink(
 			"server did not return a resource ID for public link %s", id,
 		)
 	}
-	permission, err := client.graphClient().GetItemPermission(
+	permission, err := client.Graph().GetItemPermission(
 		ctx, value.ResourceID, value.ID,
 	)
 	if err != nil {
@@ -998,7 +999,7 @@ func loadPublicLink(
 	return value, nil
 }
 
-func writePublicLink(value sharing.Link, options RunOptions) error {
+func writePublicLink(value sharing.Link, options Options) error {
 	if options.OutputMode != appoutput.Human {
 		return writeOutput(options, "share", value)
 	}
@@ -1015,7 +1016,7 @@ func writePublicLink(value sharing.Link, options RunOptions) error {
 		"ID: %s\nPath: %s\nURL: %s\nName: %s\nAccess: %s\n"+
 			"Expiration: %s\nPassword protected: %t\n",
 		value.ID, value.Path, value.URL, name,
-		permissionName(value.Permissions), expiration,
+		PermissionName(value.Permissions), expiration,
 		value.PasswordProtected,
 	)
 	return err
@@ -1050,10 +1051,10 @@ func publicLinkPermissions(linkType string) int {
 }
 
 func listPublicLinks(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
-	values, err := client.sharingClient().ListLinks(ctx, sharing.ListRequest{
-		Path: request.Path, SpaceID: client.selectedSpaceID(),
+	values, err := client.Sharing().ListLinks(ctx, sharing.ListRequest{
+		Path: request.Path, SpaceID: client.SelectedSpaceID(),
 	})
 	if err != nil {
 		return err
@@ -1068,14 +1069,15 @@ func listPublicLinks(
 		}
 		_, _ = fmt.Fprintf(
 			options.Out, "%-12s %-8s %-12s %-24s %s\n",
-			value.ID, permissionName(value.Permissions), expiration,
+			value.ID, PermissionName(value.Permissions), expiration,
 			value.Path, value.URL,
 		)
 	}
 	return nil
 }
 
-func permissionName(permissions int) string {
+// PermissionName returns a stable human label for an OCS permission mask.
+func PermissionName(permissions int) string {
 	switch permissions {
 	case 1:
 		return "read"

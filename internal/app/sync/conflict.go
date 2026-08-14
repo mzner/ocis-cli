@@ -1,4 +1,4 @@
-package app
+package sync
 
 import (
 	"crypto/sha256"
@@ -16,7 +16,7 @@ func resolveBidirectionalConflicts(
 	plan syncmodel.Plan,
 	local syncmodel.Snapshot,
 	remote syncmodel.Snapshot,
-	request SyncRequest,
+	request Request,
 ) (syncmodel.Plan, error) {
 	strategy := request.ConflictStrategy
 	if strategy == "" || strategy == "abort" || plan.Conflicts == 0 {
@@ -146,7 +146,7 @@ func ensureConflictCopyPathAvailable(
 	relative string,
 	local syncmodel.Snapshot,
 	remote syncmodel.Snapshot,
-	request SyncRequest,
+	request Request,
 ) error {
 	if _, exists := local[relative]; exists {
 		return apperror.Wrap(

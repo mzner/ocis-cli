@@ -1,4 +1,4 @@
-package app
+package admin
 
 import (
 	"context"
@@ -15,11 +15,11 @@ import (
 	appoutput "github.com/mzner/ocis-cli/internal/output"
 )
 
-func runAdmin(
+func Run(
 	ctx context.Context,
-	request AdminRequest,
+	request Request,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	if options.Space != "" {
 		return apperror.Wrap(
@@ -32,45 +32,45 @@ func runAdmin(
 	if err := validateAdminRequest(request); err != nil {
 		return apperror.Wrap(apperror.KindUsage, "admin", err)
 	}
-	client, err := newClientWithOptions(ctx, selectedProfile, options)
+	client, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
 	switch request.Operation {
-	case AdminUserList:
-		if err := requireAccountAdminMFA(ctx, client); err != nil {
+	case UserList:
+		if err := options.RequireAccountAdmin(ctx, client); err != nil {
 			return err
 		}
 		return listAdminUsers(
 			ctx, client, adminDirectorySearch(request), options,
 		)
-	case AdminUserInfo:
-		if err := requireAccountAdminMFA(ctx, client); err != nil {
+	case UserInfo:
+		if err := options.RequireAccountAdmin(ctx, client); err != nil {
 			return err
 		}
 		return showAdminUser(ctx, client, request.Identifier, options)
-	case AdminGroupList:
-		if err := requireAccountAdminMFA(ctx, client); err != nil {
+	case GroupList:
+		if err := options.RequireAccountAdmin(ctx, client); err != nil {
 			return err
 		}
 		return listAdminGroups(
 			ctx, client, adminDirectorySearch(request), options,
 		)
-	case AdminGroupInfo:
-		if err := requireAccountAdminMFA(ctx, client); err != nil {
+	case GroupInfo:
+		if err := options.RequireAccountAdmin(ctx, client); err != nil {
 			return err
 		}
 		return showAdminGroup(ctx, client, request.Identifier, options)
-	case AdminGroupMemberList:
-		if err := requireAccountAdminMFA(ctx, client); err != nil {
+	case GroupMemberList:
+		if err := options.RequireAccountAdmin(ctx, client); err != nil {
 			return err
 		}
 		return listAdminGroupMembers(
 			ctx, client, request.Identifier, options,
 		)
-	case AdminSpaceList:
+	case SpaceList:
 		return listAdminSpaces(ctx, client, options)
-	case AdminSpaceInfo:
+	case SpaceInfo:
 		return showAdminSpace(ctx, client, request.Identifier, options)
 	default:
 		return apperror.Wrap(
@@ -80,7 +80,7 @@ func runAdmin(
 	}
 }
 
-func validateAdminRequest(request AdminRequest) error {
+func validateAdminRequest(request Request) error {
 	hasSearch := strings.TrimSpace(request.Search) != ""
 	hasRawSearch := strings.TrimSpace(request.RawSearch) != ""
 	if hasSearch && hasRawSearch {
@@ -91,17 +91,17 @@ func validateAdminRequest(request AdminRequest) error {
 			`--search cannot contain a double quote; use --search-raw for an exact LibreGraph expression`,
 		)
 	}
-	if request.Operation != AdminUserList &&
-		request.Operation != AdminGroupList &&
+	if request.Operation != UserList &&
+		request.Operation != GroupList &&
 		(hasSearch || hasRawSearch) {
 		return errors.New("search is only supported for user and group lists")
 	}
 	switch request.Operation {
-	case AdminUserList, AdminGroupList:
+	case UserList, GroupList:
 		return nil
-	case AdminSpaceList:
+	case SpaceList:
 		return nil
-	case AdminUserInfo, AdminGroupInfo, AdminGroupMemberList, AdminSpaceInfo:
+	case UserInfo, GroupInfo, GroupMemberList, SpaceInfo:
 		if strings.TrimSpace(request.Identifier) == "" {
 			return errors.New("identifier is required")
 		}
@@ -111,7 +111,7 @@ func validateAdminRequest(request AdminRequest) error {
 	}
 }
 
-func adminDirectorySearch(request AdminRequest) graph.DirectorySearch {
+func adminDirectorySearch(request Request) graph.DirectorySearch {
 	if strings.TrimSpace(request.RawSearch) != "" {
 		return graph.DirectorySearch{
 			Value: request.RawSearch,
@@ -126,11 +126,11 @@ func adminDirectorySearch(request AdminRequest) graph.DirectorySearch {
 
 func listAdminUsers(
 	ctx context.Context,
-	client *client,
+	client Client,
 	search graph.DirectorySearch,
-	options RunOptions,
+	options Options,
 ) error {
-	users, err := client.graphClient().ListUsers(ctx, search)
+	users, err := client.Graph().ListUsers(ctx, search)
 	if err != nil {
 		return unavailableAdminList("user inventory", err)
 	}
@@ -154,7 +154,7 @@ func listAdminUsers(
 		for _, user := range users {
 			if _, err := fmt.Fprintf(
 				writer, "%s\t%s\t%s\t%s\t%s\n",
-				adminUserStatus(user.AccountEnabled),
+				AdminUserStatus(user.AccountEnabled),
 				user.Username, user.DisplayName, user.Mail, user.ID,
 			); err != nil {
 				return err
@@ -166,11 +166,11 @@ func listAdminUsers(
 
 func showAdminUser(
 	ctx context.Context,
-	client *client,
+	client Client,
 	identifier string,
-	options RunOptions,
+	options Options,
 ) error {
-	user, err := client.graphClient().GetUser(ctx, identifier)
+	user, err := client.Graph().GetUser(ctx, identifier)
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func writeAdminUser(writer io.Writer, user graph.DirectoryUser) error {
 		{"Username", user.Username},
 		{"Display name", user.DisplayName},
 		{"Email", user.Mail},
-		{"Account", adminUserStatus(user.AccountEnabled)},
+		{"Account", AdminUserStatus(user.AccountEnabled)},
 		{"Type", user.UserType},
 		{"Given name", user.GivenName},
 		{"Surname", user.Surname},
@@ -205,7 +205,7 @@ func writeAdminUser(writer io.Writer, user graph.DirectoryUser) error {
 	return nil
 }
 
-func adminUserStatus(enabled *bool) string {
+func AdminUserStatus(enabled *bool) string {
 	switch {
 	case enabled == nil:
 		return "unknown"
@@ -218,11 +218,11 @@ func adminUserStatus(enabled *bool) string {
 
 func listAdminGroups(
 	ctx context.Context,
-	client *client,
+	client Client,
 	search graph.DirectorySearch,
-	options RunOptions,
+	options Options,
 ) error {
-	groups, err := client.graphClient().ListGroups(ctx, search)
+	groups, err := client.Graph().ListGroups(ctx, search)
 	if err != nil {
 		return unavailableAdminList("group inventory", err)
 	}
@@ -246,7 +246,7 @@ func listAdminGroups(
 		for _, group := range groups {
 			if _, err := fmt.Fprintf(
 				writer, "%s\t%s\t%s\t%s\n",
-				adminGroupAccess(group), group.DisplayName,
+				AdminGroupAccess(group), group.DisplayName,
 				group.Description, group.ID,
 			); err != nil {
 				return err
@@ -258,11 +258,11 @@ func listAdminGroups(
 
 func showAdminGroup(
 	ctx context.Context,
-	client *client,
+	client Client,
 	identifier string,
-	options RunOptions,
+	options Options,
 ) error {
-	group, err := client.graphClient().GetGroup(ctx, identifier)
+	group, err := client.Graph().GetGroup(ctx, identifier)
 	if err != nil {
 		return err
 	}
@@ -277,7 +277,7 @@ func writeAdminGroup(writer io.Writer, group graph.DirectoryGroup) error {
 		{"ID", group.ID},
 		{"Name", group.DisplayName},
 		{"Description", group.Description},
-		{"Access", adminGroupAccess(group)},
+		{"Access", AdminGroupAccess(group)},
 	}
 	for _, field := range fields {
 		if field[1] == "" {
@@ -299,7 +299,7 @@ func writeAdminGroup(writer io.Writer, group graph.DirectoryGroup) error {
 	return nil
 }
 
-func adminGroupAccess(group graph.DirectoryGroup) string {
+func AdminGroupAccess(group graph.DirectoryGroup) string {
 	for _, groupType := range group.GroupTypes {
 		if strings.EqualFold(groupType, "ReadOnly") {
 			return "read-only"
@@ -310,11 +310,11 @@ func adminGroupAccess(group graph.DirectoryGroup) string {
 
 func listAdminGroupMembers(
 	ctx context.Context,
-	client *client,
+	client Client,
 	identifier string,
-	options RunOptions,
+	options Options,
 ) error {
-	group, err := client.graphClient().GetGroup(ctx, identifier)
+	group, err := client.Graph().GetGroup(ctx, identifier)
 	if err != nil {
 		return err
 	}
@@ -324,7 +324,7 @@ func listAdminGroupMembers(
 			group.DisplayName,
 		)
 	}
-	members, err := client.graphClient().ListGroupMembers(ctx, group.ID)
+	members, err := client.Graph().ListGroupMembers(ctx, group.ID)
 	if err != nil {
 		return err
 	}
@@ -363,9 +363,9 @@ func listAdminGroupMembers(
 }
 
 func listAdminSpaces(
-	ctx context.Context, client *client, options RunOptions,
+	ctx context.Context, client Client, options Options,
 ) error {
-	spaces, err := client.graphClient().ListDrives(ctx)
+	spaces, err := client.Graph().ListDrives(ctx)
 	if err != nil {
 		return unavailableAdminList("global Space inventory", err)
 	}
@@ -404,30 +404,23 @@ func listAdminSpaces(
 
 func showAdminSpace(
 	ctx context.Context,
-	client *client,
+	client Client,
 	identifier string,
-	options RunOptions,
+	options Options,
 ) error {
-	spaces, err := client.graphClient().ListDrives(ctx)
+	spaces, err := client.Graph().ListDrives(ctx)
 	if err != nil {
 		return unavailableAdminList("global Space inventory", err)
 	}
-	selected, err := resolveAdminSpace(spaces, identifier)
+	selected, err := ResolveSpace(spaces, identifier)
 	if err != nil {
 		return err
 	}
-	details, err := loadSpaceDetails(ctx, client, selected)
-	if err != nil {
-		return err
-	}
-	if options.OutputMode != appoutput.Human {
-		return writeOutput(options, "admin-space", details)
-	}
-	return writeSpaceDetails(options, details)
+	return options.WriteSpaceDetails(ctx, client, selected, options)
 }
 
-func resolveAdminSpace(spaces []space, identifier string) (space, error) {
-	var matches []space
+func ResolveSpace(spaces []graph.Drive, identifier string) (graph.Drive, error) {
+	var matches []graph.Drive
 	for _, value := range spaces {
 		if value.ID == identifier ||
 			strings.EqualFold(value.Name, identifier) ||
@@ -439,7 +432,7 @@ func resolveAdminSpace(spaces []space, identifier string) (space, error) {
 	case 1:
 		return matches[0], nil
 	case 0:
-		return space{}, apperror.Wrap(
+		return graph.Drive{}, apperror.Wrap(
 			apperror.KindUsage, "admin space",
 			fmt.Errorf(
 				"unknown Space %q; run ocis admin space list",
@@ -447,7 +440,7 @@ func resolveAdminSpace(spaces []space, identifier string) (space, error) {
 			),
 		)
 	default:
-		return space{}, apperror.Wrap(
+		return graph.Drive{}, apperror.Wrap(
 			apperror.KindUsage, "admin space",
 			fmt.Errorf("space name %q is ambiguous; use its ID", identifier),
 		)

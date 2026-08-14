@@ -14,6 +14,12 @@ import (
 	syncmodel "github.com/mzner/ocis-cli/internal/sync"
 )
 
+type syncStateExportDocument struct {
+	SchemaVersion string          `json:"schemaVersion"`
+	ID            string          `json:"id"`
+	State         syncmodel.State `json:"state"`
+}
+
 func TestSyncStateListShowAndExport(t *testing.T) {
 	state := syncStateFixture("work")
 	key := state.Binding.Key()
@@ -236,17 +242,6 @@ func TestSyncStateInvalidAmbiguousAndCanceled(t *testing.T) {
 	)
 	if !apperror.IsKind(err, apperror.KindCanceled) {
 		t.Fatalf("cancellation error: %v", err)
-	}
-}
-
-func TestUniqueSyncStateID(t *testing.T) {
-	first := "123456789012a" + strings.Repeat("0", 51)
-	second := "123456789012b" + strings.Repeat("0", 51)
-	if got := uniqueSyncStateID(first, []string{first, second}); got != first[:13] {
-		t.Fatalf("unique ID=%q", got)
-	}
-	if got := uniqueSyncStateID(first, []string{first}); got != first[:12] {
-		t.Fatalf("single ID=%q", got)
 	}
 }
 

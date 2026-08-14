@@ -1,4 +1,4 @@
-package app
+package sync
 
 import (
 	"context"
@@ -20,30 +20,30 @@ type syncRecoveryRemoval struct {
 	DryRun  bool   `json:"dryRun"`
 }
 
-func runSyncRecovery(
+func RunRecovery(
 	ctx context.Context,
-	request SyncRecoveryRequest,
-	options RunOptions,
+	request RecoveryRequest,
+	options Options,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	switch request.Operation {
-	case SyncRecoveryList:
+	case RecoveryList:
 		return listSyncRecoveries(request.Profile, options)
-	case SyncRecoveryShow:
+	case RecoveryShow:
 		journal, err := loadSyncRecovery(request.ID, options)
 		if err != nil {
 			return err
 		}
 		return writeSyncRecovery(journal, options)
-	case SyncRecoveryRetry:
+	case RecoveryRetry:
 		journal, err := loadSyncRecovery(request.ID, options)
 		if err != nil {
 			return err
 		}
 		return retrySyncRecovery(ctx, request, journal, options)
-	case SyncRecoveryRemove:
+	case RecoveryRemove:
 		return removeSyncRecovery(request, options)
 	default:
 		return apperror.Wrap(
@@ -53,14 +53,14 @@ func runSyncRecovery(
 	}
 }
 
-func listSyncRecoveries(profile string, options RunOptions) error {
-	keys, err := options.Dependencies.SyncRecoveries.Keys()
+func listSyncRecoveries(profile string, options Options) error {
+	keys, err := options.SyncRecoveries.Keys()
 	if err != nil {
 		return fmt.Errorf("list sync recovery journals: %w", err)
 	}
 	journals := make([]syncrecovery.Journal, 0, len(keys))
 	for _, key := range keys {
-		journal, found, err := options.Dependencies.SyncRecoveries.Load(key)
+		journal, found, err := options.SyncRecoveries.Load(key)
 		if err != nil {
 			return fmt.Errorf("load sync recovery %s: %w", key, err)
 		}
@@ -100,7 +100,7 @@ func listSyncRecoveries(profile string, options RunOptions) error {
 
 func writeSyncRecovery(
 	journal syncrecovery.Journal,
-	options RunOptions,
+	options Options,
 ) error {
 	if options.OutputMode != appoutput.Human {
 		return writeOutput(options, "sync-recovery", journal)
@@ -137,9 +137,9 @@ func writeSyncRecovery(
 
 func retrySyncRecovery(
 	ctx context.Context,
-	request SyncRecoveryRequest,
+	request RecoveryRequest,
 	journal syncrecovery.Journal,
-	options RunOptions,
+	options Options,
 ) error {
 	if request.Profile != "" && request.Profile != journal.Binding.Profile {
 		return apperror.Wrap(
@@ -150,26 +150,26 @@ func retrySyncRecovery(
 			),
 		)
 	}
-	client, err := newClientWithOptions(ctx, journal.Binding.Profile, options)
+	client, err := options.NewClient(ctx, journal.Binding.Profile)
 	if err != nil {
 		return err
 	}
-	if profileIdentity(client.profile) != journal.Binding.AccountID {
+	if client.AccountID() != journal.Binding.AccountID {
 		return apperror.Wrap(
 			apperror.KindAuthentication, "sync recovery retry",
 			errors.New("the recovery journal belongs to a different authenticated account"),
 		)
 	}
 	if journal.Binding.SpaceID != "" {
-		if err := client.selectSpace(journal.Binding.SpaceID); err != nil {
+		if err := client.SelectSpace(journal.Binding.SpaceID); err != nil {
 			return err
 		}
 	}
-	if client.selectedSpaceID() != journal.Binding.SpaceID {
+	if client.SelectedSpaceID() != journal.Binding.SpaceID {
 		return errors.New("resolved recovery Space does not match its binding")
 	}
-	prepared, err := prepareSyncRequest(SyncRequest{
-		Direction:  SyncBidirectional,
+	prepared, err := prepareSyncRequest(Request{
+		Direction:  Bidirectional,
 		LocalRoot:  journal.Binding.LocalRoot,
 		RemoteRoot: journal.Binding.RemoteRoot,
 		Includes:   journal.Binding.Includes,
@@ -184,8 +184,8 @@ func retrySyncRecovery(
 }
 
 func removeSyncRecovery(
-	request SyncRecoveryRequest,
-	options RunOptions,
+	request RecoveryRequest,
+	options Options,
 ) error {
 	if !request.Confirmed && !request.DryRun {
 		return apperror.Wrap(
@@ -199,7 +199,7 @@ func removeSyncRecovery(
 	}
 	result := syncRecoveryRemoval{ID: journal.ID, DryRun: request.DryRun}
 	if !request.DryRun {
-		removed, err := options.Dependencies.SyncRecoveries.Delete(journal.ID)
+		removed, err := options.SyncRecoveries.Delete(journal.ID)
 		if err != nil {
 			return fmt.Errorf("remove sync recovery journal: %w", err)
 		}
@@ -217,13 +217,13 @@ func removeSyncRecovery(
 
 func loadSyncRecovery(
 	id string,
-	options RunOptions,
+	options Options,
 ) (syncrecovery.Journal, error) {
 	key, err := resolveSyncRecoveryID(id, options)
 	if err != nil {
 		return syncrecovery.Journal{}, err
 	}
-	journal, found, err := options.Dependencies.SyncRecoveries.Load(key)
+	journal, found, err := options.SyncRecoveries.Load(key)
 	if err != nil {
 		return syncrecovery.Journal{}, err
 	}
@@ -238,7 +238,7 @@ func loadSyncRecovery(
 
 func resolveSyncRecoveryID(
 	query string,
-	options RunOptions,
+	options Options,
 ) (string, error) {
 	query = strings.ToLower(strings.TrimSpace(query))
 	if len(query) < syncStateIDMinimumPrefix ||
@@ -251,7 +251,7 @@ func resolveSyncRecoveryID(
 			),
 		)
 	}
-	keys, err := options.Dependencies.SyncRecoveries.Keys()
+	keys, err := options.SyncRecoveries.Keys()
 	if err != nil {
 		return "", err
 	}

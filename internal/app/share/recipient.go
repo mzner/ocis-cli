@@ -1,4 +1,4 @@
-package app
+package share
 
 import (
 	"context"
@@ -9,55 +9,41 @@ import (
 	"github.com/mzner/ocis-cli/internal/graph"
 )
 
-type spaceRecipient struct {
+type recipient struct {
 	ID          string
 	DisplayName string
 	Username    string
 	Mail        string
 }
 
-func resolveSpaceRecipient(
-	ctx context.Context,
-	client *client,
-	recipientType string,
-	identifier string,
-	isID bool,
-) (spaceRecipient, error) {
-	return resolveRecipient(
-		ctx, client, recipientType, identifier, isID, usageSpaceMember,
-	)
-}
-
 func resolveRecipient(
 	ctx context.Context,
-	client *client,
+	client Client,
 	recipientType string,
 	identifier string,
 	isID bool,
 	usage func(string) error,
-) (spaceRecipient, error) {
+) (recipient, error) {
 	if isID {
-		return spaceRecipient{ID: identifier, DisplayName: identifier}, nil
+		return recipient{ID: identifier, DisplayName: identifier}, nil
 	}
-	var candidates []spaceRecipient
+	var candidates []recipient
 	switch recipientType {
 	case "user":
-		users, err := client.graphClient().SearchUsers(ctx, identifier)
+		users, err := client.Graph().SearchUsers(ctx, identifier)
 		if err != nil {
-			return spaceRecipient{}, err
+			return recipient{}, err
 		}
-		candidates = make([]spaceRecipient, 0, len(users))
 		for _, user := range users {
 			candidates = append(candidates, recipientFromUser(user))
 		}
 	case "group":
-		groups, err := client.graphClient().SearchGroups(ctx, identifier)
+		groups, err := client.Graph().SearchGroups(ctx, identifier)
 		if err != nil {
-			return spaceRecipient{}, err
+			return recipient{}, err
 		}
-		candidates = make([]spaceRecipient, 0, len(groups))
 		for _, group := range groups {
-			candidates = append(candidates, spaceRecipient{
+			candidates = append(candidates, recipient{
 				ID: group.ID, DisplayName: group.DisplayName,
 			})
 		}
@@ -65,28 +51,42 @@ func resolveRecipient(
 	return selectRecipient(candidates, identifier, recipientType, usage)
 }
 
-func recipientFromUser(user graph.DirectoryUser) spaceRecipient {
-	return spaceRecipient{
+func resolveFederatedRecipient(
+	ctx context.Context,
+	client Client,
+	identifier string,
+	isID bool,
+) (recipient, error) {
+	if isID {
+		return recipient{ID: identifier, DisplayName: identifier}, nil
+	}
+	users, err := client.Graph().SearchFederatedUsers(ctx, identifier)
+	if err != nil {
+		return recipient{}, err
+	}
+	candidates := make([]recipient, 0, len(users))
+	for _, user := range users {
+		if strings.EqualFold(user.UserType, "Federated") {
+			candidates = append(candidates, recipientFromUser(user))
+		}
+	}
+	return selectRecipient(candidates, identifier, "federated user", usageShare)
+}
+
+func recipientFromUser(user graph.DirectoryUser) recipient {
+	return recipient{
 		ID: user.ID, DisplayName: user.DisplayName,
 		Username: user.Username, Mail: user.Mail,
 	}
 }
 
-func selectSpaceRecipient(
-	candidates []spaceRecipient, identifier string, recipientType string,
-) (spaceRecipient, error) {
-	return selectRecipient(
-		candidates, identifier, recipientType, usageSpaceMember,
-	)
-}
-
 func selectRecipient(
-	candidates []spaceRecipient,
+	candidates []recipient,
 	identifier string,
 	recipientType string,
 	usage func(string) error,
-) (spaceRecipient, error) {
-	var exact []spaceRecipient
+) (recipient, error) {
+	var exact []recipient
 	for _, candidate := range candidates {
 		if strings.EqualFold(candidate.ID, identifier) ||
 			strings.EqualFold(candidate.DisplayName, identifier) ||
@@ -106,7 +106,7 @@ func selectRecipient(
 		candidates = exact
 	}
 	if len(candidates) == 0 {
-		return spaceRecipient{}, usage(fmt.Sprintf(
+		return recipient{}, usage(fmt.Sprintf(
 			"no %s matched %q; use --recipient-id with an opaque Graph ID",
 			recipientType, identifier,
 		))
@@ -119,7 +119,7 @@ func selectRecipient(
 		))
 	}
 	sort.Strings(labels)
-	return spaceRecipient{}, usage(fmt.Sprintf(
+	return recipient{}, usage(fmt.Sprintf(
 		"%s %q is ambiguous: %s; use --recipient-id with the intended ID",
 		recipientType, identifier, strings.Join(labels, ", "),
 	))

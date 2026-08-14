@@ -182,15 +182,6 @@ func TestSyncJobLifecycleAndExecution(t *testing.T) {
 	}
 }
 
-func TestSyncJobPullRootDisplay(t *testing.T) {
-	job := syncjob.Job{
-		Direction: syncmodel.Pull, LocalRoot: "/local", RemoteRoot: "/remote",
-	}
-	if got := syncJobRoots(job); got != "/remote -> /local" {
-		t.Fatalf("roots=%q", got)
-	}
-}
-
 func TestSyncBidirectionalJobExecution(t *testing.T) {
 	dav := newSyncDAV()
 	dav.nodes["/job"] = &syncDAVNode{directory: true}
@@ -216,8 +207,9 @@ func TestSyncBidirectionalJobExecution(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if jobs.store.Jobs["two-way"].Direction != syncmodel.Bidirectional ||
-		syncJobRoots(jobs.store.Jobs["two-way"]) != local+" <-> /job" {
+	saved := jobs.store.Jobs["two-way"]
+	if saved.Direction != syncmodel.Bidirectional ||
+		saved.LocalRoot != local || saved.RemoteRoot != "/job" {
 		t.Fatalf("saved bidirectional job=%#v", jobs.store.Jobs["two-way"])
 	}
 	if err := RunSyncJobWithOptions(

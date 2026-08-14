@@ -1,4 +1,4 @@
-package app
+package sync
 
 import (
 	"context"
@@ -19,36 +19,36 @@ type syncJobRemoval struct {
 	DryRun  bool   `json:"dryRun"`
 }
 
-func runSyncJob(
+func RunJob(
 	ctx context.Context,
-	request SyncJobRequest,
-	options RunOptions,
+	request JobRequest,
+	options Options,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	store, err := options.Dependencies.SyncJobs.Load()
+	store, err := options.SyncJobs.Load()
 	if err != nil {
 		return fmt.Errorf("load sync jobs: %w", err)
 	}
 	switch request.Operation {
-	case SyncJobAdd:
+	case JobAdd:
 		return addSyncJob(ctx, request, store, options)
-	case SyncJobList:
+	case JobList:
 		return listSyncJobs(request.Profile, store, options)
-	case SyncJobShow:
+	case JobShow:
 		job, err := findSyncJob(request.Name, store)
 		if err != nil {
 			return err
 		}
 		return writeSyncJob(job, options)
-	case SyncJobRun:
+	case JobRun:
 		job, err := findSyncJob(request.Name, store)
 		if err != nil {
 			return err
 		}
 		return executeSyncJob(ctx, request, job, options)
-	case SyncJobRemove:
+	case JobRemove:
 		return removeSyncJob(request, store, options)
 	default:
 		return apperror.Wrap(
@@ -60,9 +60,9 @@ func runSyncJob(
 
 func addSyncJob(
 	ctx context.Context,
-	request SyncJobRequest,
+	request JobRequest,
 	store syncjob.Store,
-	options RunOptions,
+	options Options,
 ) error {
 	if err := syncjob.ValidateName(request.Name); err != nil {
 		return apperror.Wrap(apperror.KindUsage, "sync job add", err)
@@ -76,7 +76,7 @@ func addSyncJob(
 			),
 		)
 	}
-	prepared, err := prepareSyncRequest(SyncRequest{
+	prepared, err := prepareSyncRequest(Request{
 		Direction: request.Direction,
 		LocalRoot: request.LocalRoot, RemoteRoot: request.RemoteRoot,
 		Includes: request.Includes, Excludes: request.Excludes,
@@ -86,20 +86,20 @@ func addSyncJob(
 	if err != nil {
 		return err
 	}
-	client, err := newClientWithOptions(ctx, request.Profile, options)
+	client, err := options.NewClient(ctx, request.Profile)
 	if err != nil {
 		return err
 	}
-	if err := client.selectSpace(request.Space); err != nil {
+	if err := client.SelectSpace(request.Space); err != nil {
 		return err
 	}
-	accountID := profileIdentity(client.profile)
+	accountID := client.AccountID()
 	if accountID == "" {
 		return errors.New("cannot bind a sync job to an unauthenticated account")
 	}
 	job := syncjob.Job{
-		Name: request.Name, Profile: client.name, AccountID: accountID,
-		SpaceID: client.selectedSpaceID(), Direction: prepared.direction,
+		Name: request.Name, Profile: client.ProfileName(), AccountID: accountID,
+		SpaceID: client.SelectedSpaceID(), Direction: prepared.direction,
 		LocalRoot: prepared.localRoot, RemoteRoot: prepared.remoteRoot,
 		Includes: append([]string(nil), prepared.request.Includes...),
 		Excludes: append([]string(nil), prepared.request.Excludes...),
@@ -111,7 +111,7 @@ func addSyncJob(
 	}
 	store = cloneSyncJobStore(store)
 	store.Jobs[job.Name] = job
-	if err := options.Dependencies.SyncJobs.Save(store); err != nil {
+	if err := options.SyncJobs.Save(store); err != nil {
 		return fmt.Errorf("save sync jobs: %w", err)
 	}
 	return output(
@@ -124,7 +124,7 @@ func addSyncJob(
 func listSyncJobs(
 	profile string,
 	store syncjob.Store,
-	options RunOptions,
+	options Options,
 ) error {
 	names := make([]string, 0, len(store.Jobs))
 	for name, job := range store.Jobs {
@@ -167,7 +167,7 @@ func listSyncJobs(
 	return writer.Flush()
 }
 
-func writeSyncJob(job syncjob.Job, options RunOptions) error {
+func writeSyncJob(job syncjob.Job, options Options) error {
 	if options.OutputMode != appoutput.Human {
 		return writeOutput(options, "sync-job", job)
 	}
@@ -203,9 +203,9 @@ func writeSyncJob(job syncjob.Job, options RunOptions) error {
 
 func executeSyncJob(
 	ctx context.Context,
-	request SyncJobRequest,
+	request JobRequest,
 	job syncjob.Job,
-	options RunOptions,
+	options Options,
 ) error {
 	if request.Profile != "" && request.Profile != job.Profile {
 		return apperror.Wrap(
@@ -224,8 +224,8 @@ func executeSyncJob(
 			),
 		)
 	}
-	prepared, err := prepareSyncRequest(SyncRequest{
-		Direction: SyncDirection(job.Direction),
+	prepared, err := prepareSyncRequest(Request{
+		Direction: Direction(job.Direction),
 		LocalRoot: job.LocalRoot, RemoteRoot: job.RemoteRoot,
 		Includes: job.Includes, Excludes: job.Excludes,
 		Delete: job.Delete, Overwrite: job.Overwrite,
@@ -234,11 +234,11 @@ func executeSyncJob(
 	if err != nil {
 		return fmt.Errorf("invalid saved sync job %q: %w", job.Name, err)
 	}
-	client, err := newClientWithOptions(ctx, job.Profile, options)
+	client, err := options.NewClient(ctx, job.Profile)
 	if err != nil {
 		return err
 	}
-	currentIdentity := profileIdentity(client.profile)
+	currentIdentity := client.AccountID()
 	if currentIdentity != job.AccountID {
 		return apperror.Wrap(
 			apperror.KindAuthentication, "sync job run",
@@ -250,23 +250,23 @@ func executeSyncJob(
 		)
 	}
 	if job.SpaceID != "" {
-		if err := client.selectSpace(job.SpaceID); err != nil {
+		if err := client.SelectSpace(job.SpaceID); err != nil {
 			return fmt.Errorf(
 				"sync job %q Space %q is unavailable: %w",
 				job.Name, job.SpaceID, err,
 			)
 		}
 	}
-	if client.selectedSpaceID() != job.SpaceID {
+	if client.SelectedSpaceID() != job.SpaceID {
 		return errors.New("resolved sync-job Space does not match its binding")
 	}
 	return runPreparedSync(ctx, prepared, client, options)
 }
 
 func removeSyncJob(
-	request SyncJobRequest,
+	request JobRequest,
 	store syncjob.Store,
-	options RunOptions,
+	options Options,
 ) error {
 	if !request.Confirmed && !request.DryRun {
 		return apperror.Wrap(
@@ -282,7 +282,7 @@ func removeSyncJob(
 	if !request.DryRun {
 		store = cloneSyncJobStore(store)
 		delete(store.Jobs, job.Name)
-		if err := options.Dependencies.SyncJobs.Save(store); err != nil {
+		if err := options.SyncJobs.Save(store); err != nil {
 			return fmt.Errorf("save sync jobs: %w", err)
 		}
 		result.Removed = true

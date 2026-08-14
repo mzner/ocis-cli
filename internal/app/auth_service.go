@@ -30,179 +30,140 @@ func runAuth(ctx context.Context, request AuthRequest, selected string, options 
 	if err != nil {
 		return err
 	}
-	switch request.Operation {
-	case AuthSetup:
-		profileName := request.Profile
-		if profileName == "" {
-			profileName = selected
+	handlers := map[AuthOperation]func() error{
+		AuthSetup:  func() error { return runAuthSetup(ctx, request, selected, s, options) },
+		AuthLogin:  func() error { return runAuthLogin(ctx, request, selected, s, options) },
+		AuthStatus: func() error { return runAuthStatus(request, selected, s, options) },
+		AuthLogout: func() error { return runAuthLogout(request, selected, s, options) },
+	}
+	handler, found := handlers[request.Operation]
+	if !found {
+		return apperror.Wrap(apperror.KindUsage, "authentication", fmt.Errorf("unknown auth command %q", request.Operation))
+	}
+	return handler()
+}
+
+func runAuthSetup(ctx context.Context, request AuthRequest, selected string, s *store, options RunOptions) error {
+	profileName := request.Profile
+	if profileName == "" {
+		profileName = selected
+	}
+	return setupOIDCClient(ctx, s, profileName, options)
+}
+
+func runAuthStatus(request AuthRequest, selected string, s *store, options RunOptions) error {
+	profileName := request.Profile
+	if profileName == "" {
+		profileName = selected
+	}
+	name, p, err := selectProfile(s, profileName)
+	if err != nil {
+		return err
+	}
+	authenticated := p.Password != "" || p.AccessToken != "" || p.RefreshToken != ""
+	return output(options, "authentication", map[string]any{"profile": name, "server": p.Server, "username": p.Username, "authType": p.AuthType, "authenticated": authenticated, "expiresAt": p.ExpiresAt}, "%s: %s as %s using %s (authenticated: %t)\n", name, p.Server, p.Username, p.AuthType, authenticated)
+}
+
+func runAuthLogout(request AuthRequest, selected string, s *store, options RunOptions) error {
+	profileName := request.Profile
+	if profileName == "" {
+		profileName = selected
+	}
+	name, p, err := selectProfile(s, profileName)
+	if err != nil {
+		return err
+	}
+	clearAuthenticatedAccount(&p)
+	s.Profiles[name] = p
+	if err := saveStore(options.Dependencies, s); err != nil {
+		return err
+	}
+	return output(options, "authentication", map[string]any{"profile": name, "authenticated": false}, "Logged out from %s\n", name)
+}
+
+func runAuthLogin(ctx context.Context, request AuthRequest, selected string, s *store, options RunOptions) error {
+	server, name, clientID := request.Server, request.Name, request.ClientID
+	if request.Profile != "" {
+		selected = request.Profile
+	}
+	if server != "" {
+		if err := validateServerURL(server, request.Insecure); err != nil {
+			return apperror.Wrap(apperror.KindUsage, "login", err)
 		}
-		return setupOIDCClient(ctx, s, profileName, options)
-	case AuthLogin:
-		server, name, clientID := request.Server, request.Name, request.ClientID
-		if request.Profile != "" {
-			selected = request.Profile
-		}
-		if server != "" {
-			if err := validateServerURL(server, request.Insecure); err != nil {
-				return apperror.Wrap(apperror.KindUsage, "login", err)
-			}
+		if name == "" {
+			u, _ := url.Parse(server)
+			name = strings.ReplaceAll(u.Hostname(), ".", "-")
 			if name == "" {
-				u, _ := url.Parse(server)
-				name = strings.ReplaceAll(u.Hostname(), ".", "-")
-				if name == "" {
-					name = "ocis"
-				}
+				name = "ocis"
 			}
-			if clientID == "" {
-				clientID = defaultClientID
-			}
-			secret := os.Getenv("OCIS_CLIENT_SECRET")
-			s.Profiles[name] = profile{
-				Server: strings.TrimRight(server, "/"), Insecure: request.Insecure,
-				ClientID: clientID, ClientSecret: secret,
-			}
-			s.Current, selected = name, name
 		}
-		name, p, err := selectProfile(s, selected)
-		if err != nil {
-			return err
+		if clientID == "" {
+			clientID = defaultClientID
 		}
-		if clientID != "" {
-			p.ClientID = clientID
-			p.ClientSecret = os.Getenv("OCIS_CLIENT_SECRET")
+		s.Profiles[name] = profile{Server: strings.TrimRight(server, "/"), Insecure: request.Insecure, ClientID: clientID, ClientSecret: os.Getenv("OCIS_CLIENT_SECRET")}
+		s.Current, selected = name, name
+	}
+	name, p, err := selectProfile(s, selected)
+	if err != nil {
+		return err
+	}
+	if clientID != "" {
+		p.ClientID = clientID
+		p.ClientSecret = os.Getenv("OCIS_CLIENT_SECRET")
+	}
+	if request.Insecure {
+		p.Insecure = true
+	}
+	if err := validateProfileServerURL(name, p); err != nil {
+		return err
+	}
+	mode := request.Mode
+	if mode == "" {
+		mode = "oidc"
+	}
+	switch mode {
+	case "oidc":
+		if request.ACR != "" && !request.MFA {
+			return apperror.Wrap(apperror.KindUsage, "login", errors.New("--acr requires --mfa"))
 		}
-		if request.Insecure {
-			p.Insecure = true
-		}
-		// A login without a new --server reuses the stored URL, which a release
-		// before the https requirement may have saved as cleartext. Checked after
-		// request.Insecure is applied, so the flag still opts in, and before a new
-		// password is obtained, a browser is opened, discovery runs, or a probe is
-		// sent.
-		if err := validateProfileServerURL(name, p); err != nil {
-			return err
-		}
-		authType := request.Mode
-		if authType == "" {
-			authType = "oidc"
-		}
-		switch authType {
-		case "oidc":
-			if request.ACR != "" && !request.MFA {
-				return apperror.Wrap(
-					apperror.KindUsage, "login",
-					errors.New("--acr requires --mfa"),
-				)
-			}
-			acr := ""
-			if request.MFA {
-				acr, err = resolveMFAACR(
-					ctx, p, request.ACR, options,
-				)
-				if err != nil {
-					return err
-				}
-			}
-			if err := oidcLogin(
-				ctx, &p, request.NoBrowser, acr, options,
-			); err != nil {
-				return explainOIDCLoginError(name, p.ClientID, err)
-			}
-			p.AuthType, p.Password = "oidc", ""
-		case "basic":
-			if request.MFA || request.ACR != "" {
-				return apperror.Wrap(
-					apperror.KindUsage, "login",
-					errors.New(
-						"MFA step-up requires OIDC authentication",
-					),
-				)
-			}
-			if request.Username == "" {
-				return apperror.Wrap(
-					apperror.KindUsage, "login",
-					errors.New("--username is required with --auth basic"),
-				)
-			}
-			password, err := obtainPassword(options)
+		acr := ""
+		if request.MFA {
+			acr, err = resolveMFAACR(ctx, p, request.ACR, options)
 			if err != nil {
 				return err
 			}
-			p.AuthType, p.Username, p.Password = "basic", request.Username, password
-			p.Subject = ""
-			p.AccessToken, p.RefreshToken, p.ExpiresAt = "", "", 0
-			probe := &client{
-				name: name, profile: p, http: httpClientFor(p, options.Timeout),
-				store: s, ctx: ctx, retries: options.Retries, logger: options.Logger,
-			}
-			if _, err := probe.list("/"); err != nil {
-				return fmt.Errorf("basic authentication failed: %w", err)
-			}
-		default:
-			return apperror.Wrap(
-				apperror.KindUsage, "login",
-				fmt.Errorf("unsupported auth mode %q; use oidc or basic", authType),
-			)
 		}
-		clearDefaultSpaceAfterIdentityChange(&p)
-		s.Profiles[name], s.Current = p, name
-		if err := saveStore(options.Dependencies, s); err != nil {
-			return err
+		if err := oidcLogin(ctx, &p, request.NoBrowser, acr, options); err != nil {
+			return explainOIDCLoginError(name, p.ClientID, err)
 		}
-		return output(
-			options, "authentication",
-			map[string]any{
-				"authenticated": true, "profile": name, "server": p.Server,
-				"username": p.Username, "authType": p.AuthType,
-			},
-			"Authenticated with %s as %s using %s\n",
-			p.Server, p.Username, p.AuthType,
-		)
-	case AuthStatus:
-		profileName := request.Profile
-		if profileName == "" {
-			profileName = selected
+		p.AuthType, p.Password = "oidc", ""
+	case "basic":
+		if request.MFA || request.ACR != "" {
+			return apperror.Wrap(apperror.KindUsage, "login", errors.New("MFA step-up requires OIDC authentication"))
 		}
-		name, p, err := selectProfile(s, profileName)
+		if request.Username == "" {
+			return apperror.Wrap(apperror.KindUsage, "login", errors.New("--username is required with --auth basic"))
+		}
+		password, err := obtainPassword(options)
 		if err != nil {
 			return err
 		}
-		authenticated := p.Password != "" || p.AccessToken != "" || p.RefreshToken != ""
-		return output(
-			options, "authentication",
-			map[string]any{
-				"profile": name, "server": p.Server, "username": p.Username,
-				"authType": p.AuthType, "authenticated": authenticated,
-				"expiresAt": p.ExpiresAt,
-			},
-			"%s: %s as %s using %s (authenticated: %t)\n",
-			name, p.Server, p.Username, p.AuthType, authenticated,
-		)
-	case AuthLogout:
-		profileName := request.Profile
-		if profileName == "" {
-			profileName = selected
+		p.AuthType, p.Username, p.Password = "basic", request.Username, password
+		p.Subject = ""
+		p.AccessToken, p.RefreshToken, p.ExpiresAt = "", "", 0
+		probe := &client{name: name, profile: p, http: httpClientFor(p, options.Timeout), store: s, ctx: ctx, retries: options.Retries, logger: options.Logger}
+		if _, err := probe.list("/"); err != nil {
+			return fmt.Errorf("basic authentication failed: %w", err)
 		}
-		name, p, err := selectProfile(s, profileName)
-		if err != nil {
-			return err
-		}
-		clearAuthenticatedAccount(&p)
-		s.Profiles[name] = p
-		if err := saveStore(options.Dependencies, s); err != nil {
-			return err
-		}
-		return output(
-			options, "authentication",
-			map[string]any{"profile": name, "authenticated": false},
-			"Logged out from %s\n", name,
-		)
 	default:
-		return apperror.Wrap(
-			apperror.KindUsage, "authentication",
-			fmt.Errorf("unknown auth command %q", request.Operation),
-		)
+		return apperror.Wrap(apperror.KindUsage, "login", fmt.Errorf("unsupported auth mode %q; use oidc or basic", mode))
 	}
+	clearDefaultSpaceAfterIdentityChange(&p)
+	s.Profiles[name], s.Current = p, name
+	if err := saveStore(options.Dependencies, s); err != nil {
+		return err
+	}
+	return output(options, "authentication", map[string]any{"authenticated": true, "profile": name, "server": p.Server, "username": p.Username, "authType": p.AuthType}, "Authenticated with %s as %s using %s\n", p.Server, p.Username, p.AuthType)
 }
 
 func oidcLogin(

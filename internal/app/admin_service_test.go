@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	adminapp "github.com/mzner/ocis-cli/internal/app/admin"
 	"github.com/mzner/ocis-cli/internal/apperror"
 	"github.com/mzner/ocis-cli/internal/graph"
 	appoutput "github.com/mzner/ocis-cli/internal/output"
@@ -254,7 +255,7 @@ func TestAdministrativeInventoryRejectsSpaceSelectionBeforeProfile(t *testing.T)
 }
 
 func TestResolveAdminSpaceFailsClosedOnAmbiguousName(t *testing.T) {
-	_, err := resolveAdminSpace([]space{
+	_, err := adminapp.ResolveSpace([]space{
 		{ID: "space-1", Name: "Shared"},
 		{ID: "space-2", Name: "shared"},
 	}, "shared")
@@ -290,11 +291,11 @@ func TestAdminValidationAndFormatting(t *testing.T) {
 	}
 
 	disabled := false
-	if adminUserStatus(nil) != "unknown" ||
-		adminUserStatus(&disabled) != "disabled" {
+	if adminapp.AdminUserStatus(nil) != "unknown" ||
+		adminapp.AdminUserStatus(&disabled) != "disabled" {
 		t.Fatal("unexpected account status formatting")
 	}
-	if adminGroupAccess(directoryGroupForTest()) != "writable" {
+	if adminapp.AdminGroupAccess(directoryGroupForTest()) != "writable" {
 		t.Fatal("ordinary group was not writable")
 	}
 }

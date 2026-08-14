@@ -1,4 +1,4 @@
-package app
+package share
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/mzner/ocis-cli/internal/apperror"
+	"github.com/mzner/ocis-cli/internal/graph"
 	appoutput "github.com/mzner/ocis-cli/internal/output"
 	"github.com/mzner/ocis-cli/internal/sharing"
 )
@@ -24,24 +25,7 @@ const (
 	shareStateDeclined = "declined"
 )
 
-// ShareOverviewItem is one stable outgoing or received share inventory row.
-type ShareOverviewItem struct {
-	ShareID       string `json:"shareId"`
-	Direction     string `json:"direction"`
-	State         string `json:"state"`
-	SpaceID       string `json:"spaceId,omitempty"`
-	SpaceName     string `json:"spaceName"`
-	Path          string `json:"path,omitempty"`
-	Type          string `json:"type"`
-	PartyID       string `json:"partyId,omitempty"`
-	PartyName     string `json:"partyName"`
-	Permissions   int    `json:"permissions"`
-	Permission    string `json:"permission"`
-	Expiration    string `json:"expiration,omitempty"`
-	PublicLinkURL string `json:"publicLinkUrl,omitempty"`
-}
-
-func validateShareOverviewFilters(request ShareRequest) error {
+func validateShareOverviewFilters(request Request) error {
 	direction := normalizeOverviewDirection(request.Direction)
 	state := normalizeOverviewState(request.State)
 	if direction != shareDirectionAll &&
@@ -71,16 +55,16 @@ func validateShareOverviewFilters(request ShareRequest) error {
 }
 
 func listShareOverview(
-	ctx context.Context, client *client, request ShareRequest, options RunOptions,
+	ctx context.Context, client Client, request Request, options Options,
 ) error {
 	direction := normalizeOverviewDirection(request.Direction)
 	state := normalizeOverviewState(request.State)
 
-	spaces, err := client.graphClient().ListMyDrives(ctx)
+	spaces, err := client.Graph().ListMyDrives(ctx)
 	if err != nil {
 		return err
 	}
-	var selected *space
+	var selected *graph.Drive
 	if strings.TrimSpace(options.Space) != "" {
 		value, resolveErr := resolveSpace(spaces, options.Space)
 		if resolveErr != nil {
@@ -96,13 +80,13 @@ func listShareOverview(
 		includeOutgoing = false
 	}
 
-	items := make([]ShareOverviewItem, 0)
+	items := make([]OverviewItem, 0)
 	if includeOutgoing {
 		listRequest := sharing.ShareListRequest{}
 		if selected != nil {
 			listRequest.SpaceID = selected.ID
 		}
-		shares, listErr := client.sharingClient().ListShares(ctx, listRequest)
+		shares, listErr := client.Sharing().ListShares(ctx, listRequest)
 		if listErr != nil {
 			return listErr
 		}
@@ -113,7 +97,7 @@ func listShareOverview(
 		}
 	}
 	if includeReceived {
-		shares, listErr := client.sharingClient().ListShares(
+		shares, listErr := client.Sharing().ListShares(
 			ctx, sharing.ShareListRequest{Received: true, AllStates: true},
 		)
 		if listErr != nil {
@@ -183,7 +167,7 @@ func overviewReceivedStateMatches(value sharing.Share, state string) bool {
 	}
 }
 
-func overviewSpaceMatches(value sharing.Share, selected *space) bool {
+func overviewSpaceMatches(value sharing.Share, selected *graph.Drive) bool {
 	if selected == nil || isReceivedSharesDrive(*selected) {
 		return true
 	}
@@ -195,15 +179,15 @@ func shareSpaceMatches(shareSpaceID, selectedSpaceID string) bool {
 		strings.HasPrefix(shareSpaceID, selectedSpaceID+"!")
 }
 
-func isReceivedSharesDrive(value space) bool {
+func isReceivedSharesDrive(value graph.Drive) bool {
 	return value.DriveType == "virtual" &&
 		(strings.EqualFold(value.DriveAlias, "virtual/shares") ||
 			strings.EqualFold(value.Name, "Shares"))
 }
 
 func overviewItem(
-	value sharing.Share, direction string, spaces []space,
-) ShareOverviewItem {
+	value sharing.Share, direction string, spaces []graph.Drive,
+) OverviewItem {
 	state := "active"
 	partyID := value.RecipientID
 	partyName := fallback(value.RecipientName, value.RecipientID)
@@ -225,18 +209,18 @@ func overviewItem(
 	if spaceName == "" {
 		spaceName = "unknown"
 	}
-	return ShareOverviewItem{
+	return OverviewItem{
 		ShareID: value.ID, Direction: direction, State: state,
 		SpaceID: value.SpaceID, SpaceName: spaceName,
 		Path: value.Path, Type: value.Type,
 		PartyID: partyID, PartyName: partyName,
 		Permissions: value.Permissions,
-		Permission:  permissionName(value.Permissions),
+		Permission:  PermissionName(value.Permissions),
 		Expiration:  value.Expiration, PublicLinkURL: value.URL,
 	}
 }
 
-func overviewSpaceName(spaceID string, spaces []space) string {
+func overviewSpaceName(spaceID string, spaces []graph.Drive) string {
 	bestName, bestID := "", ""
 	for _, candidate := range spaces {
 		if shareSpaceMatches(spaceID, candidate.ID) &&
@@ -247,7 +231,7 @@ func overviewSpaceName(spaceID string, spaces []space) string {
 	return bestName
 }
 
-func writeShareOverview(items []ShareOverviewItem, options RunOptions) error {
+func writeShareOverview(items []OverviewItem, options Options) error {
 	if options.OutputMode != appoutput.Human {
 		return writeOutput(options, "share-overview", items)
 	}

@@ -1,4 +1,4 @@
-package app
+package admin
 
 import (
 	"context"
@@ -27,52 +27,55 @@ type advertisedRole struct {
 	role        graph.AppRole
 }
 
-func runAdminRole(
+func RunRole(
 	ctx context.Context,
-	request AdminRoleRequest,
+	request RoleRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.User = strings.TrimSpace(request.User)
 	request.Role = strings.TrimSpace(request.Role)
-	if request.Operation != AdminRoleAvailable && request.User == "" {
+	if request.Operation != RoleAvailable && request.User == "" {
 		return apperror.Wrap(
 			apperror.KindUsage, "admin user role",
 			fmt.Errorf("user identifier is required"),
 		)
 	}
-	if (request.Operation == AdminRoleGrant ||
-		request.Operation == AdminRoleRevoke) && request.Role == "" {
+	if (request.Operation == RoleGrant ||
+		request.Operation == RoleRevoke) && request.Role == "" {
 		return apperror.Wrap(
 			apperror.KindUsage, "admin user role",
 			fmt.Errorf("role name, role ID, or assignment ID is required"),
 		)
 	}
-	selected, err := newAdminMutationClient(ctx, selectedProfile, options)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
 		return err
 	}
-	applications, err := selected.graphClient().ListApplications(ctx)
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
+		return err
+	}
+	applications, err := selected.Graph().ListApplications(ctx)
 	if err != nil {
 		return roleServiceError(err)
 	}
 	roles := advertisedRoles(applications)
-	if request.Operation == AdminRoleAvailable {
+	if request.Operation == RoleAvailable {
 		return listAvailableAdminRoles(roles, options)
 	}
 	user, err := resolveMutationUser(ctx, selected, request.User)
 	if err != nil {
 		return err
 	}
-	assignments, err := selected.graphClient().ListAppRoleAssignments(ctx, user.ID)
+	assignments, err := selected.Graph().ListAppRoleAssignments(ctx, user.ID)
 	if err != nil {
 		return roleServiceError(err)
 	}
 	switch request.Operation {
-	case AdminRoleList:
+	case RoleList:
 		return listAdminRoles(assignments, roles, options)
-	case AdminRoleGrant:
-		role, err := resolveAdvertisedRole(roles, request.Role)
+	case RoleGrant:
+		role, err := ResolveAdvertisedRole(roles, request.Role)
 		if err != nil {
 			return err
 		}
@@ -90,7 +93,7 @@ func runAdminRole(
 				fallback(user.Username, user.DisplayName), user.ID,
 			)
 		}
-		created, err := selected.graphClient().AssignAppRole(
+		created, err := selected.Graph().AssignAppRole(
 			ctx, graph.AppRoleAssignment{
 				AppRoleID: role.role.ID, PrincipalID: user.ID,
 				ResourceID: role.application.ID,
@@ -105,11 +108,11 @@ func runAdminRole(
 			role.role.DisplayName, role.role.ID,
 			fallback(user.Username, user.DisplayName), user.ID,
 		)
-	case AdminRoleRevoke:
+	case RoleRevoke:
 		if err := rejectSelfTarget(ctx, selected, user, "revoke roles from"); err != nil {
 			return err
 		}
-		assignment, roleName, err := resolveRoleAssignment(
+		assignment, roleName, err := ResolveRoleAssignment(
 			assignments, roles, request.Role,
 		)
 		if err != nil {
@@ -130,7 +133,7 @@ func runAdminRole(
 				fallback(user.Username, user.DisplayName), user.ID,
 			)
 		}
-		if err := selected.graphClient().RemoveAppRoleAssignment(
+		if err := selected.Graph().RemoveAppRoleAssignment(
 			ctx, user.ID, assignment.ID,
 		); err != nil {
 			return roleServiceError(err)
@@ -168,7 +171,7 @@ func advertisedRoles(applications []graph.Application) []advertisedRole {
 	return roles
 }
 
-func resolveAdvertisedRole(
+func ResolveAdvertisedRole(
 	roles []advertisedRole, selector string,
 ) (advertisedRole, error) {
 	var matches []advertisedRole
@@ -193,7 +196,7 @@ func resolveAdvertisedRole(
 	)
 }
 
-func resolveRoleAssignment(
+func ResolveRoleAssignment(
 	assignments []graph.AppRoleAssignment,
 	roles []advertisedRole,
 	selector string,
@@ -223,7 +226,7 @@ func resolveRoleAssignment(
 func listAdminRoles(
 	assignments []graph.AppRoleAssignment,
 	roles []advertisedRole,
-	options RunOptions,
+	options Options,
 ) error {
 	rows := make([]adminRoleAssignment, 0, len(assignments))
 	for _, assignment := range assignments {
@@ -270,7 +273,7 @@ func listAdminRoles(
 
 func listAvailableAdminRoles(
 	roles []advertisedRole,
-	options RunOptions,
+	options Options,
 ) error {
 	type roleRow struct {
 		Role          string `json:"role"`

@@ -8,6 +8,9 @@ import (
 	"os"
 	"time"
 
+	adminapp "github.com/mzner/ocis-cli/internal/app/admin"
+	shareapp "github.com/mzner/ocis-cli/internal/app/share"
+	syncapp "github.com/mzner/ocis-cli/internal/app/sync"
 	"github.com/mzner/ocis-cli/internal/apperror"
 	"github.com/mzner/ocis-cli/internal/graph"
 	"github.com/mzner/ocis-cli/internal/logging"
@@ -152,50 +155,30 @@ type SpaceMemberRequest struct {
 }
 
 // ShareOperation identifies a sharing use case.
-type ShareOperation string
+type ShareOperation = shareapp.Operation
 
 const (
-	ShareCreate       ShareOperation = "create"
-	ShareList         ShareOperation = "list"
-	ShareRevoke       ShareOperation = "revoke"
-	ShareLinkInfo     ShareOperation = "link-info"
-	ShareLinkUpdate   ShareOperation = "link-update"
-	ShareDirectAdd    ShareOperation = "direct-add"
-	ShareFederatedAdd ShareOperation = "federated-add"
-	ShareDirectUpdate ShareOperation = "direct-update"
-	ShareRemove       ShareOperation = "remove"
-	ShareOverview     ShareOperation = "overview"
-	ShareReceived     ShareOperation = "received"
-	ShareAccept       ShareOperation = "accept"
-	ShareDecline      ShareOperation = "decline"
-	ShareRoles        ShareOperation = "roles"
+	ShareCreate       = shareapp.Create
+	ShareList         = shareapp.List
+	ShareRevoke       = shareapp.Revoke
+	ShareLinkInfo     = shareapp.LinkInfo
+	ShareLinkUpdate   = shareapp.LinkUpdate
+	ShareDirectAdd    = shareapp.DirectAdd
+	ShareFederatedAdd = shareapp.FederatedAdd
+	ShareDirectUpdate = shareapp.DirectUpdate
+	ShareRemove       = shareapp.Remove
+	ShareOverview     = shareapp.Overview
+	ShareReceived     = shareapp.Received
+	ShareAccept       = shareapp.Accept
+	ShareDecline      = shareapp.Decline
+	ShareRoles        = shareapp.Roles
 )
 
 // ShareRequest describes one public-link or direct-sharing operation.
-type ShareRequest struct {
-	Operation        ShareOperation
-	Path             string
-	ID               string
-	Name             string
-	Password         string
-	UpdateName       bool
-	UpdateExpiration bool
-	UpdateAccess     bool
-	UpdatePassword   bool
-	RemovePassword   bool
-	Expiration       string
-	Permissions      int
-	Recipient        string
-	RecipientType    string
-	RecipientIsID    bool
-	Role             string
-	Direction        string
-	State            string
-	LinksOnly        bool
-	Confirmed        bool
-	DryRun           bool
-	Federated        bool
-}
+type ShareRequest = shareapp.Request
+
+// ShareOverviewItem is one stable outgoing or received share inventory row.
+type ShareOverviewItem = shareapp.OverviewItem
 
 // TrashOperation identifies a recycle-bin use case.
 type TrashOperation string
@@ -349,101 +332,62 @@ type BatchSummary struct {
 }
 
 // SyncDirection identifies a synchronization policy.
-type SyncDirection string
+type SyncDirection = syncapp.Direction
 
 const (
 	// SyncPush copies the local source tree into the remote destination.
-	SyncPush SyncDirection = "push"
+	SyncPush = syncapp.Push
 	// SyncPull copies the remote source tree into the local destination.
-	SyncPull SyncDirection = "pull"
+	SyncPull = syncapp.Pull
 	// SyncBidirectional reconciles local and remote changes through a baseline.
-	SyncBidirectional SyncDirection = "bidirectional"
+	SyncBidirectional = syncapp.Bidirectional
 )
 
 // SyncRequest describes one deterministic directory reconciliation.
-type SyncRequest struct {
-	Direction        SyncDirection
-	LocalRoot        string
-	RemoteRoot       string
-	Includes         []string
-	Excludes         []string
-	Delete           bool
-	Overwrite        bool
-	DryRun           bool
-	MaxEntries       int
-	ConflictStrategy string
-	Prefer           string
-}
+type SyncRequest = syncapp.Request
 
 // SyncStateOperation identifies a local synchronization-state operation.
-type SyncStateOperation string
+type SyncStateOperation = syncapp.StateOperation
 
 const (
-	SyncStateList   SyncStateOperation = "list"
-	SyncStateShow   SyncStateOperation = "show"
-	SyncStateExport SyncStateOperation = "export"
-	SyncStateRemove SyncStateOperation = "remove"
+	SyncStateList   = syncapp.StateList
+	SyncStateShow   = syncapp.StateShow
+	SyncStateExport = syncapp.StateExport
+	SyncStateRemove = syncapp.StateRemove
 )
 
 // SyncStateRequest describes inspection, export, or removal of a saved
 // synchronization baseline.
-type SyncStateRequest struct {
-	Operation SyncStateOperation
-	ID        string
-	Profile   string
-	Confirmed bool
-	DryRun    bool
-}
+type SyncStateRequest = syncapp.StateRequest
 
 // SyncRecoveryOperation identifies an interrupted-run journal operation.
-type SyncRecoveryOperation string
+type SyncRecoveryOperation = syncapp.RecoveryOperation
 
 const (
-	SyncRecoveryList   SyncRecoveryOperation = "list"
-	SyncRecoveryShow   SyncRecoveryOperation = "show"
-	SyncRecoveryRetry  SyncRecoveryOperation = "retry"
-	SyncRecoveryRemove SyncRecoveryOperation = "remove"
+	SyncRecoveryList   = syncapp.RecoveryList
+	SyncRecoveryShow   = syncapp.RecoveryShow
+	SyncRecoveryRetry  = syncapp.RecoveryRetry
+	SyncRecoveryRemove = syncapp.RecoveryRemove
 )
 
 // SyncRecoveryRequest describes inspection, safe retry, or removal of a
 // bidirectional synchronization recovery journal.
-type SyncRecoveryRequest struct {
-	Operation SyncRecoveryOperation
-	ID        string
-	Profile   string
-	Confirmed bool
-	DryRun    bool
-}
+type SyncRecoveryRequest = syncapp.RecoveryRequest
 
 // SyncJobOperation identifies a reusable synchronization-job operation.
-type SyncJobOperation string
+type SyncJobOperation = syncapp.JobOperation
 
 const (
-	SyncJobAdd    SyncJobOperation = "add"
-	SyncJobList   SyncJobOperation = "list"
-	SyncJobShow   SyncJobOperation = "show"
-	SyncJobRun    SyncJobOperation = "run"
-	SyncJobRemove SyncJobOperation = "remove"
+	SyncJobAdd    = syncapp.JobAdd
+	SyncJobList   = syncapp.JobList
+	SyncJobShow   = syncapp.JobShow
+	SyncJobRun    = syncapp.JobRun
+	SyncJobRemove = syncapp.JobRemove
 )
 
 // SyncJobRequest describes creation, inspection, execution, or removal of a
 // named synchronization configuration.
-type SyncJobRequest struct {
-	Operation         SyncJobOperation
-	Name              string
-	Profile           string
-	Space             string
-	Direction         SyncDirection
-	LocalRoot         string
-	RemoteRoot        string
-	Includes          []string
-	Excludes          []string
-	DeleteDestination bool
-	Overwrite         bool
-	MaxEntries        int
-	Confirmed         bool
-	DryRun            bool
-}
+type SyncJobRequest = syncapp.JobRequest
 
 // MetadataOperation identifies a file-metadata use case.
 type MetadataOperation string
@@ -471,108 +415,57 @@ type MetadataRequest struct {
 }
 
 // AdminOperation identifies a read-only administrative use case.
-type AdminOperation string
+type AdminOperation = adminapp.Operation
 
 const (
-	AdminUserList        AdminOperation = "user-list"
-	AdminUserInfo        AdminOperation = "user-info"
-	AdminGroupList       AdminOperation = "group-list"
-	AdminGroupInfo       AdminOperation = "group-info"
-	AdminGroupMemberList AdminOperation = "group-member-list"
-	AdminSpaceList       AdminOperation = "space-list"
-	AdminSpaceInfo       AdminOperation = "space-info"
+	AdminUserList        = adminapp.UserList
+	AdminUserInfo        = adminapp.UserInfo
+	AdminGroupList       = adminapp.GroupList
+	AdminGroupInfo       = adminapp.GroupInfo
+	AdminGroupMemberList = adminapp.GroupMemberList
+	AdminSpaceList       = adminapp.SpaceList
+	AdminSpaceInfo       = adminapp.SpaceInfo
 )
 
 // AdminRequest describes one read-only administrative operation.
-type AdminRequest struct {
-	Operation  AdminOperation
-	Identifier string
-	Search     string
-	RawSearch  string
-}
+type AdminRequest = adminapp.Request
 
 // AdminUserCreateRequest describes a new server user.
-type AdminUserCreateRequest struct {
-	Username    string
-	DisplayName string
-	Mail        string
-	GivenName   string
-	Surname     string
-	Password    string
-	Disabled    bool
-	DryRun      bool
-}
+type AdminUserCreateRequest = adminapp.UserCreateRequest
 
 // AdminUserUpdateRequest contains explicitly selected user changes.
-type AdminUserUpdateRequest struct {
-	Identifier  string
-	Username    *string
-	DisplayName *string
-	Mail        *string
-	GivenName   *string
-	Surname     *string
-	Password    string
-	SetPassword bool
-	DryRun      bool
-}
+type AdminUserUpdateRequest = adminapp.UserUpdateRequest
 
 // AdminUserStateRequest enables or disables one user account.
-type AdminUserStateRequest struct {
-	Identifier string
-	Enabled    bool
-	DryRun     bool
-}
+type AdminUserStateRequest = adminapp.UserStateRequest
 
 // AdminUserDeleteRequest permanently deletes one user account.
-type AdminUserDeleteRequest struct {
-	Identifier string
-	DryRun     bool
-}
+type AdminUserDeleteRequest = adminapp.UserDeleteRequest
 
 // AdminGroupCreateRequest describes a new server group.
-type AdminGroupCreateRequest struct {
-	Name   string
-	DryRun bool
-}
+type AdminGroupCreateRequest = adminapp.GroupCreateRequest
 
 // AdminGroupUpdateRequest renames one server group.
-type AdminGroupUpdateRequest struct {
-	Identifier string
-	Name       string
-	DryRun     bool
-}
+type AdminGroupUpdateRequest = adminapp.GroupUpdateRequest
 
 // AdminGroupDeleteRequest permanently deletes one server group.
-type AdminGroupDeleteRequest struct {
-	Identifier string
-	DryRun     bool
-}
+type AdminGroupDeleteRequest = adminapp.GroupDeleteRequest
 
 // AdminGroupMemberMutationRequest adds or removes a direct user member.
-type AdminGroupMemberMutationRequest struct {
-	Group  string
-	User   string
-	Remove bool
-	DryRun bool
-}
+type AdminGroupMemberMutationRequest = adminapp.GroupMemberMutationRequest
 
 // AdminRoleOperation identifies one user-role operation.
-type AdminRoleOperation string
+type AdminRoleOperation = adminapp.RoleOperation
 
 const (
-	AdminRoleList      AdminRoleOperation = "list"
-	AdminRoleAvailable AdminRoleOperation = "available"
-	AdminRoleGrant     AdminRoleOperation = "grant"
-	AdminRoleRevoke    AdminRoleOperation = "revoke"
+	AdminRoleList      = adminapp.RoleList
+	AdminRoleAvailable = adminapp.RoleAvailable
+	AdminRoleGrant     = adminapp.RoleGrant
+	AdminRoleRevoke    = adminapp.RoleRevoke
 )
 
 // AdminRoleRequest lists, grants, or revokes a server-advertised user role.
-type AdminRoleRequest struct {
-	Operation AdminRoleOperation
-	User      string
-	Role      string
-	DryRun    bool
-}
+type AdminRoleRequest = adminapp.RoleRequest
 
 // SearchRequest describes a read-only remote resource search.
 type SearchRequest struct {
@@ -683,7 +576,7 @@ func RunSyncWithOptions(
 ) error {
 	return classifyProtocolError(
 		"sync "+string(request.Direction),
-		runSync(ctx, request, selectedProfile, options.normalized()),
+		syncapp.Run(ctx, request, selectedProfile, syncOptions(options.normalized())),
 	)
 }
 
@@ -695,7 +588,7 @@ func RunSyncStateWithOptions(
 ) error {
 	return classifyProtocolError(
 		"sync state "+string(request.Operation),
-		runSyncState(ctx, request, options.normalized()),
+		syncapp.RunState(ctx, request, syncOptions(options.normalized())),
 	)
 }
 
@@ -707,7 +600,7 @@ func RunSyncJobWithOptions(
 ) error {
 	return classifyProtocolError(
 		"sync job "+string(request.Operation),
-		runSyncJob(ctx, request, options.normalized()),
+		syncapp.RunJob(ctx, request, syncOptions(options.normalized())),
 	)
 }
 
@@ -719,7 +612,7 @@ func RunSyncRecoveryWithOptions(
 ) error {
 	return classifyProtocolError(
 		"sync recovery "+string(request.Operation),
-		runSyncRecovery(ctx, request, options.normalized()),
+		syncapp.RunRecovery(ctx, request, syncOptions(options.normalized())),
 	)
 }
 
@@ -745,7 +638,7 @@ func RunAdminWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin "+string(request.Operation),
-		runAdmin(ctx, request, selectedProfile, options.normalized()),
+		adminapp.Run(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -771,9 +664,7 @@ func RunAdminUserCreateWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin user create",
-		runAdminUserCreate(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunUserCreate(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -786,9 +677,7 @@ func RunAdminUserUpdateWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin user update",
-		runAdminUserUpdate(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunUserUpdate(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -801,9 +690,7 @@ func RunAdminUserStateWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin user state",
-		runAdminUserState(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunUserState(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -816,9 +703,7 @@ func RunAdminUserDeleteWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin user delete",
-		runAdminUserDelete(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunUserDelete(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -831,9 +716,7 @@ func RunAdminGroupCreateWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin group create",
-		runAdminGroupCreate(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunGroupCreate(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -846,9 +729,7 @@ func RunAdminGroupUpdateWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin group update",
-		runAdminGroupUpdate(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunGroupUpdate(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -861,9 +742,7 @@ func RunAdminGroupDeleteWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin group delete",
-		runAdminGroupDelete(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunGroupDelete(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -876,9 +755,7 @@ func RunAdminGroupMemberMutationWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin group member",
-		runAdminGroupMemberMutation(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunGroupMemberMutation(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -891,9 +768,7 @@ func RunAdminRoleWithOptions(
 ) error {
 	return classifyProtocolError(
 		"admin user role",
-		runAdminRole(
-			ctx, request, selectedProfile, options.normalized(),
-		),
+		adminapp.RunRole(ctx, request, selectedProfile, adminOptions(options.normalized())),
 	)
 }
 
@@ -965,9 +840,10 @@ func RunSpaceMemberWithOptions(
 func RunShareWithOptions(
 	ctx context.Context, request ShareRequest, selectedProfile string, options RunOptions,
 ) error {
+	options = options.normalized()
 	return classifyProtocolError(
 		string(request.Operation),
-		runShare(ctx, request, selectedProfile, options.normalized()),
+		shareapp.Run(ctx, request, selectedProfile, shareOptions(options)),
 	)
 }
 

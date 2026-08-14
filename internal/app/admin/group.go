@@ -1,4 +1,4 @@
-package app
+package admin
 
 import (
 	"context"
@@ -9,11 +9,11 @@ import (
 	"github.com/mzner/ocis-cli/internal/graph"
 )
 
-func runAdminGroupCreate(
+func RunGroupCreate(
 	ctx context.Context,
-	request AdminGroupCreateRequest,
+	request GroupCreateRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.Name = strings.TrimSpace(request.Name)
 	if request.Name == "" {
@@ -22,8 +22,11 @@ func runAdminGroupCreate(
 			fmt.Errorf("group name is required"),
 		)
 	}
-	selected, err := newAdminMutationClient(ctx, selectedProfile, options)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
+		return err
+	}
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
 		return err
 	}
 	if request.DryRun {
@@ -35,7 +38,7 @@ func runAdminGroupCreate(
 			"Would create group %s\n", request.Name,
 		)
 	}
-	created, err := selected.graphClient().CreateGroup(
+	created, err := selected.Graph().CreateGroup(
 		ctx, graph.CreateGroupRequest{DisplayName: request.Name},
 	)
 	if err != nil {
@@ -47,11 +50,11 @@ func runAdminGroupCreate(
 	)
 }
 
-func runAdminGroupUpdate(
+func RunGroupUpdate(
 	ctx context.Context,
-	request AdminGroupUpdateRequest,
+	request GroupUpdateRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.Identifier = strings.TrimSpace(request.Identifier)
 	request.Name = strings.TrimSpace(request.Name)
@@ -61,8 +64,11 @@ func runAdminGroupUpdate(
 			fmt.Errorf("group identifier and --name are required"),
 		)
 	}
-	selected, err := newAdminMutationClient(ctx, selectedProfile, options)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
+		return err
+	}
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
 		return err
 	}
 	group, err := resolveMutationGroup(ctx, selected, request.Identifier)
@@ -85,7 +91,7 @@ func runAdminGroupUpdate(
 		)
 	}
 	name := request.Name
-	if err := selected.graphClient().UpdateGroup(
+	if err := selected.Graph().UpdateGroup(
 		ctx, group.ID, graph.UpdateGroupRequest{DisplayName: &name},
 	); err != nil {
 		return adminMutationError("group", err)
@@ -102,11 +108,11 @@ func runAdminGroupUpdate(
 	)
 }
 
-func runAdminGroupDelete(
+func RunGroupDelete(
 	ctx context.Context,
-	request AdminGroupDeleteRequest,
+	request GroupDeleteRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.Identifier = strings.TrimSpace(request.Identifier)
 	if request.Identifier == "" {
@@ -115,8 +121,11 @@ func runAdminGroupDelete(
 			fmt.Errorf("group identifier is required"),
 		)
 	}
-	selected, err := newAdminMutationClient(ctx, selectedProfile, options)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
+		return err
+	}
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
 		return err
 	}
 	group, err := resolveMutationGroup(ctx, selected, request.Identifier)
@@ -137,7 +146,7 @@ func runAdminGroupDelete(
 			group.DisplayName, group.ID,
 		)
 	}
-	if err := selected.graphClient().DeleteGroup(ctx, group.ID); err != nil {
+	if err := selected.Graph().DeleteGroup(ctx, group.ID); err != nil {
 		return adminMutationError("group", err)
 	}
 	return output(
@@ -150,11 +159,11 @@ func runAdminGroupDelete(
 	)
 }
 
-func runAdminGroupMemberMutation(
+func RunGroupMemberMutation(
 	ctx context.Context,
-	request AdminGroupMemberMutationRequest,
+	request GroupMemberMutationRequest,
 	selectedProfile string,
-	options RunOptions,
+	options Options,
 ) error {
 	request.Group = strings.TrimSpace(request.Group)
 	request.User = strings.TrimSpace(request.User)
@@ -164,8 +173,11 @@ func runAdminGroupMemberMutation(
 			fmt.Errorf("group and user identifiers are required"),
 		)
 	}
-	selected, err := newAdminMutationClient(ctx, selectedProfile, options)
+	selected, err := options.NewClient(ctx, selectedProfile)
 	if err != nil {
+		return err
+	}
+	if err := options.RequireAccountAdmin(ctx, selected); err != nil {
 		return err
 	}
 	group, err := resolveMutationGroup(ctx, selected, request.Group)
@@ -198,9 +210,9 @@ func runAdminGroupMemberMutation(
 		)
 	}
 	if request.Remove {
-		err = selected.graphClient().RemoveGroupMember(ctx, group.ID, user.ID)
+		err = selected.Graph().RemoveGroupMember(ctx, group.ID, user.ID)
 	} else {
-		err = selected.graphClient().AddGroupMember(ctx, group.ID, user.ID)
+		err = selected.Graph().AddGroupMember(ctx, group.ID, user.ID)
 	}
 	if err != nil {
 		return adminMutationError("group membership", err)
