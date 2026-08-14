@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	archiveapp "github.com/mzner/ocis-cli/internal/app/archive"
 	"github.com/mzner/ocis-cli/internal/apperror"
 	"github.com/mzner/ocis-cli/internal/credentials"
 	"github.com/mzner/ocis-cli/internal/sharing"
@@ -98,12 +99,12 @@ func RunDoctorWithOptions(
 		Detail: resumableUploadCapabilityDetail(features),
 	})
 	archiveStatus := "unsupported"
-	if _, err := selectArchiver(features.Files.Archivers); err == nil {
+	if _, err := archiveapp.SelectCapabilities(features.Files.Archivers); err == nil {
 		archiveStatus = "ok"
 	}
 	checks = append(checks, DoctorCheck{
 		Name: "archive downloads", Status: archiveStatus,
-		Detail: archiverCapabilityDetail(features),
+		Detail: archiveapp.CapabilityDetail(features),
 	})
 	eventStatus := "unsupported"
 	if features.Core.SupportSSE {

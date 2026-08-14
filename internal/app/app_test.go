@@ -24,7 +24,6 @@ import (
 	"github.com/mzner/ocis-cli/internal/auth"
 	"github.com/mzner/ocis-cli/internal/credentials"
 	appoutput "github.com/mzner/ocis-cli/internal/output"
-	"github.com/mzner/ocis-cli/internal/transfer"
 	"github.com/zalando/go-keyring"
 )
 
@@ -126,29 +125,6 @@ func TestFilesystemDryRunPlansAllTransferKinds(t *testing.T) {
 	}
 	if requests != 1 {
 		t.Fatalf("dry-run requests: got %d, want destination resolution only", requests)
-	}
-}
-
-func TestProgressReporterWritesAggregateProgress(t *testing.T) {
-	var output bytes.Buffer
-	report := progressReporter(RunOptions{
-		Err: &output, OutputMode: appoutput.Human,
-	}.normalized())
-	if report == nil {
-		t.Fatal("progress reporter is nil")
-	}
-	report(transfer.Progress{
-		Operation: "upload", Destination: "/report.txt",
-		CompletedBytes: 50, TotalBytes: 100, CompletedFiles: 1, TotalFiles: 2,
-		StartedAt: time.Now().Add(-time.Second),
-	})
-	for _, expected := range []string{"upload", "1/2 files", "50/100 bytes", "50%", "/report.txt"} {
-		if !strings.Contains(output.String(), expected) {
-			t.Fatalf("progress missing %q: %s", expected, output.String())
-		}
-	}
-	if progressReporter(RunOptions{Quiet: true}.normalized()) != nil {
-		t.Fatal("quiet mode returned a progress reporter")
 	}
 }
 
@@ -1680,21 +1656,8 @@ func TestProfileSelectionErrorsAndAccessTokenOverride(t *testing.T) {
 }
 
 func TestStreamHelperErrors(t *testing.T) {
-	if _, cleanup, err := spoolInput(failingReader{}); err == nil {
-		cleanup()
-		t.Fatal("spooling a failing reader succeeded")
-	}
-	if err := writeFileTo(io.Discard, filepath.Join(t.TempDir(), "missing")); err == nil {
-		t.Fatal("writing a missing file succeeded")
-	}
 	t.Setenv("OCIS_PASSWORD", "")
 	if _, err := obtainPassword(RunOptions{Err: io.Discard}.normalized()); err == nil {
 		t.Fatal("non-interactive password acquisition succeeded")
 	}
-}
-
-type failingReader struct{}
-
-func (failingReader) Read([]byte) (int, error) {
-	return 0, errors.New("read failed")
 }

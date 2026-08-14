@@ -330,30 +330,4 @@ func TestBatchInputGuards(t *testing.T) {
 		t.Fatalf("confirmation error: %v", err)
 	}
 
-	tests := []string{
-		`{"operation":"upload","source":"-","destination":"/x"}`,
-		`{"operation":"download","source":"/x","destination":"-"}`,
-		`{"operation":"touch","path":"/x","parents":true}`,
-		`{"operation":"mkdir","path":"/x","unknown":true}`,
-	}
-	for _, input := range tests {
-		_, err := parseBatchOperations(strings.NewReader(input), 10)
-		if !apperror.IsKind(err, apperror.KindUsage) {
-			t.Errorf("input %s: %v", input, err)
-		}
-	}
-	_, err := parseBatchOperations(strings.NewReader(
-		"{\"operation\":\"mkdir\",\"path\":\"/a\"}\n"+
-			"{\"operation\":\"mkdir\",\"path\":\"/b\"}\n",
-	), 1)
-	if !apperror.IsKind(err, apperror.KindUsage) ||
-		!strings.Contains(err.Error(), "--max-operations 1") {
-		t.Fatalf("limit error: %v", err)
-	}
-	for _, input := range []string{"", `{"operation":"mkdir","path":"/x"} {}`} {
-		_, err := parseBatchOperations(strings.NewReader(input), 10)
-		if !apperror.IsKind(err, apperror.KindUsage) {
-			t.Errorf("input %q: %v", input, err)
-		}
-	}
 }

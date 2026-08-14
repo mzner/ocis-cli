@@ -1,11 +1,13 @@
 package integration_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -203,6 +205,15 @@ type trashItem struct {
 type version struct {
 	ID   string `json:"id"`
 	Size int64  `json:"size"`
+}
+
+type archiveResult struct {
+	Entries      int64 `json:"entries"`
+	Files        int64 `json:"files"`
+	Directories  int64 `json:"directories"`
+	LogicalBytes int64 `json:"logicalBytes"`
+	ArchiveBytes int64 `json:"archiveBytes"`
+	DryRun       bool  `json:"dryRun"`
 }
 
 type errorData struct {
@@ -1548,6 +1559,40 @@ func (current *fixture) testSpaces(t *testing.T) {
 	current.success(
 		t, nil, "--profile", current.admin, "mkdir", "/admin-folder",
 	)
+	archiveContent := []byte("project Space archive integration\n")
+	archiveSource := filepath.Join(current.local, "space-archive.txt")
+	writeFile(t, archiveSource, archiveContent)
+	current.success(
+		t, nil, "--profile", current.admin, "upload",
+		archiveSource, "/admin-folder/archive.txt",
+	)
+	archiveDestination := filepath.Join(current.local, "project-space.zip")
+	archivePlan := decodeData[archiveResult](
+		t, current.json(
+			t, current.admin, "archive", "download", "/admin-folder",
+			"--output", archiveDestination, "--dry-run",
+		),
+	)
+	if !archivePlan.DryRun || archivePlan.Entries != 2 ||
+		archivePlan.Files != 1 || archivePlan.Directories != 1 ||
+		archivePlan.LogicalBytes != int64(len(archiveContent)) {
+		t.Fatalf("archive dry-run = %#v", archivePlan)
+	}
+	if _, err := os.Stat(archiveDestination); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("archive dry-run created destination: %v", err)
+	}
+	archived := decodeData[archiveResult](
+		t, current.json(
+			t, current.admin, "archive", "download", "/admin-folder",
+			"--output", archiveDestination,
+		),
+	)
+	if archived.DryRun || archived.Entries != 2 || archived.ArchiveBytes <= 0 {
+		t.Fatalf("archive result = %#v", archived)
+	}
+	assertZIPFile(
+		t, archiveDestination, "admin-folder/archive.txt", archiveContent,
+	)
 	current.success(t, nil, "--profile", current.admin, "space", "unset")
 
 	added := decodeData[member](
@@ -1713,6 +1758,39 @@ func assertFile(t *testing.T, path string, expected []byte) {
 	if !bytes.Equal(actual, expected) {
 		t.Fatalf("file %s = %q, want %q", path, actual, expected)
 	}
+}
+
+func assertZIPFile(
+	t *testing.T, archivePath, entryName string, expected []byte,
+) {
+	t.Helper()
+	archive, err := zip.OpenReader(archivePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = archive.Close() }()
+	for _, entry := range archive.File {
+		if entry.Name != entryName {
+			continue
+		}
+		reader, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, readErr := io.ReadAll(reader)
+		closeErr := reader.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
+		if !bytes.Equal(actual, expected) {
+			t.Fatalf("archive entry %s = %q, want %q", entryName, actual, expected)
+		}
+		return
+	}
+	t.Fatalf("archive %s does not contain %s", archivePath, entryName)
 }
 
 func hasItem(items []item, name string) bool {

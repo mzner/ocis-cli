@@ -25,7 +25,11 @@ debugging targets.
 ## Design rules
 
 - Keep Cobra code in `internal/command` thin.
-- Put use-case orchestration in `internal/app`.
+- Put small cross-domain orchestration in the `internal/app` facade. Put large
+  domain policy in `internal/app/<domain>` behind narrow injected ports; domain
+  packages must not import the parent `internal/app` package. Current domain
+  boundaries are `admin`, `archive`, `filesystem`, `share`, `spaces`, and
+  `sync`.
 - Keep authentication and WebDAV protocol details out of commands.
 - Pass contexts, dependencies, and output streams explicitly.
 - Add tests at the narrowest package boundary.
@@ -34,8 +38,8 @@ debugging targets.
 - Format with `gofmt`.
 - Run `make check`, including per-package coverage gates, golangci-lint v2.12.2,
   and `gosec`.
-- Keep `app`, `auth`, `graph`, `httpapi`, `sharing`, `transfer`, and `webdav`
-  at or above 75% statement coverage.
+- Keep the complete `app/...` tree, plus `auth`, `graph`, `httpapi`, `sharing`,
+  `transfer`, and `webdav`, at or above 75% statement coverage.
 - Every `//nolint` directive must name the linter and explain why suppression
   is safe using a second `//`, for example `//nolint:gosec // reason`.
 - Write lowercase, contextual errors without trailing punctuation.
